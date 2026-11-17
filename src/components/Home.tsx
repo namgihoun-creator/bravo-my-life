@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Award,
   ChevronDown,
   Clock3,
   LocateFixed,
   MapPin,
+  List,
+  Map as MapIcon,
   Navigation,
   Plus,
   Siren,
@@ -25,8 +27,12 @@ import { getSupabase } from "@/lib/supabase";
 import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
+import PlaceMap from "./PlaceMap";
 
 const RADIUS_M = 2000;
+const EMPTY: Place[] = []; // 로딩 중 반환값을 안정된 참조로 유지 (지도 재그리기 방지)
+
+type View = "list" | "map";
 
 /* ───────────────────────── 위치 ───────────────────────── */
 
@@ -98,7 +104,7 @@ function useNearby(loc: Loc, nonce: number) {
   return {
     loading: !ready,
     error: ready && result.error,
-    places: ready ? result.places : [],
+    places: ready ? result.places : EMPTY,
   };
 }
 
@@ -124,6 +130,37 @@ function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void 
             aria-selected={active}
             onClick={() => onChange(key)}
             className={`theme-t flex min-h-[44px] cursor-pointer items-center justify-center gap-1.5 rounded-[10px] px-2 text-label font-bold ${
+              active ? "bg-primary text-on-primary" : "bg-transparent text-muted"
+            }`}
+          >
+            <Icon size={16} aria-hidden />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const items = [
+    { key: "list" as const, label: "목록", Icon: List },
+    { key: "map" as const, label: "지도", Icon: MapIcon },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="보기 방식"
+      className="theme-t grid shrink-0 grid-cols-2 gap-0.5 rounded-[14px] border border-line bg-surface p-0.5"
+    >
+      {items.map(({ key, label, Icon }) => {
+        const active = key === view;
+        return (
+          <button
+            key={key}
+            aria-pressed={active}
+            onClick={() => onChange(key)}
+            className={`theme-t flex min-h-[44px] w-[46px] cursor-pointer flex-col items-center justify-center rounded-xl text-caption font-bold ${
               active ? "bg-primary text-on-primary" : "bg-transparent text-muted"
             }`}
           >
@@ -162,7 +199,7 @@ function FilterChips({
       ref={ref}
       role="group"
       aria-label="카테고리 필터"
-      className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4"
+      className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto"
     >
       {FILTERS[mode]
         .filter((f) => !counts || f.key === "all" || counts[f.key] > 0)
@@ -366,6 +403,8 @@ export default function Home() {
   const [reportOpen, setReportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [view, setView] = useState<View>("list"); // 기본값: 목록
+  const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
   // scrollTargetId: 스크롤 이동 대상 / highlightId: 도착 후 링 강조 중인 카드
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -413,13 +452,26 @@ export default function Home() {
   const changeMode = (m: Mode) => {
     setMode(m);
     setFilter("all");
+    setSelectedId(null);
+  };
+
+  const changeFilter = (k: string) => {
+    setFilter(k);
+    setSelectedId(null);
+  };
+
+  const changeView = (v: View) => {
+    setView(v);
+    setSelectedId(null);
+    if (v === "map") window.scrollTo({ top: 0 });
   };
 
   const showParking = (parkingId: string) => {
     setMode("survival");
     setFilter("parking");
     setHighlightId(null);
-    setScrollTargetId(parkingId);
+    if (view === "map") setSelectedId(parkingId); // 지도에서는 해당 주차장 핀을 선택
+    else setScrollTargetId(parkingId);
   };
 
   // 목표 카드로 스크롤이 '도착한 뒤'에 링 강조를 시작한다.
@@ -450,18 +502,26 @@ export default function Home() {
     };
   }, [scrollTargetId]);
 
-  // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다.
-  const modePlaces = all.filter((p) => p.mode === mode);
-  const matches = (p: Place, key: string) =>
-    key === "all" || p.category === key || !!p.extra?.includes(key);
-  const counts =
-    loading || error
+  // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
+  const { counts, activeFilter, places } = useMemo(() => {
+    const matches = (p: Place, key: string) =>
+      key === "all" || p.category === key || !!p.extra?.includes(key);
+    const modePlaces = all.filter((p) => p.mode === mode);
+    const counts =
+      loading || error
+        ? null
+        : Object.fromEntries(
+            FILTERS[mode].map((f) => [f.key, modePlaces.filter((p) => matches(p, f.key)).length]),
+          );
+    const activeFilter = counts && !counts[filter] ? "all" : filter;
+    return { counts, activeFilter, places: modePlaces.filter((p) => matches(p, activeFilter)) };
+  }, [all, mode, filter, loading, error]);
+
+  const selected = places.find((p) => p.id === selectedId) ?? null;
+  const center =
+    loc.kind === "pending"
       ? null
-      : Object.fromEntries(
-          FILTERS[mode].map((f) => [f.key, modePlaces.filter((p) => matches(p, f.key)).length]),
-        );
-  const activeFilter = counts && !counts[filter] ? "all" : filter;
-  const places = modePlaces.filter((p) => matches(p, activeFilter));
+      : { lat: loc.lat, lng: loc.lng, name: loc.kind === "gps" ? "현재 위치" : loc.name };
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md">
@@ -479,7 +539,10 @@ export default function Home() {
 
       <div className="theme-t sticky top-0 z-10 mt-4 space-y-3 bg-bg px-4 pb-3 pt-2 shadow-sticky">
         <ModeTabs mode={mode} onChange={changeMode} />
-        <FilterChips mode={mode} value={activeFilter} counts={counts} onChange={setFilter} />
+        <div className="flex items-center gap-2">
+          <FilterChips mode={mode} value={activeFilter} counts={counts} onChange={changeFilter} />
+          <ViewToggle view={view} onChange={changeView} />
+        </div>
       </div>
 
       <main
@@ -487,10 +550,14 @@ export default function Home() {
         aria-busy={loading}
       >
         {loading ? (
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
+          view === "map" ? (
+            <div className="h-[calc(100dvh-250px)] min-h-[380px] animate-pulse rounded-2xl bg-tag-bg" aria-hidden />
+          ) : (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          )
         ) : error ? (
           <div className="py-12 text-center">
             <p className="text-body text-ink">데이터를 불러오지 못했어요.</p>
@@ -501,6 +568,23 @@ export default function Home() {
               다시 시도
             </button>
           </div>
+        ) : view === "map" && center ? (
+          <PlaceMap
+            center={center}
+            places={places}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelectedId}
+            onFallback={() => changeView("list")}
+          >
+            {selected && (
+              <PlaceCard
+                place={selected}
+                all={all}
+                highlighted={false}
+                onShowParking={showParking}
+              />
+            )}
+          </PlaceMap>
         ) : places.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-body text-muted">
