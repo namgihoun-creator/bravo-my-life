@@ -84,16 +84,14 @@ export function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
-export function buildNavUrl(app: NavApp, { name, lat, lng }: NavTarget, mobile: boolean): string {
+export function buildNavUrl(app: NavApp, { name, lat, lng }: NavTarget): string {
   const n = encodeURIComponent(name);
   switch (app) {
     case "kakao":
       return `https://map.kakao.com/link/to/${n},${lat},${lng}`;
     case "naver":
-      // 모바일: 네이버지도 앱 전환 + 웹 경로 / 데스크톱: 웹 길찾기(대중교통)
-      return mobile
-        ? `https://m.map.naver.com/route.nhn?ename=${n}&ex=${lng}&ey=${lat}&menu=route`
-        : `https://map.naver.com/v5/directions/-/${lng},${lat},${n}/-/transit`;
+      // 네이버지도 통합 경로(/p/directions): 모바일은 앱/웹, 데스크톱은 웹으로 자연스럽게 이어진다
+      return `https://map.naver.com/p/directions/-/${lng},${lat},${n}/-/transit`;
     case "tmap":
       return `tmap://route?goalname=${n}&goalx=${lng}&goaly=${lat}`;
   }
@@ -133,8 +131,24 @@ function launchTmap(url: string) {
   }, TMAP_WAIT_MS);
 }
 
+/**
+ * 외부 지도 열기. 사용자 탭 안에서 실행되는 <a target="_blank"> 클릭은 팝업 차단 대상이 아니고,
+ * 모바일 브라우저/PWA에서 유니버설 링크(앱 전환)도 정상 동작한다. (window.open + noopener 는 성공 여부를 알 수 없고
+ * 일부 환경에서 차단되므로 쓰지 않는다)
+ */
+function openExternal(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export function openNavigation(app: NavApp, target: NavTarget) {
-  const url = buildNavUrl(app, target, isMobileDevice());
+  const url = buildNavUrl(app, target);
   if (app === "tmap") return launchTmap(url);
-  window.open(url, "_blank", "noopener,noreferrer");
+  openExternal(url);
 }

@@ -303,3 +303,12 @@ body {
   color: #0064ff;
   box-shadow: none;
 }
+
+/* ── 바텀 시트 손잡이: 아래로 내려 닫을 수 있는 시트임을 알리는 시각 단서 ── */
+.sheet-grabber {
+  width: 40px;
+  height: 4px;
+  margin: -4px auto 12px;
+  border-radius: 999px;
+  background: var(--border);
+}

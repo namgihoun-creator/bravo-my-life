@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MapPinOff } from "lucide-react";
+import { MapPinOff, X } from "lucide-react";
 import {
   loadKakaoMaps,
   mapErrorMessage,
@@ -306,8 +306,16 @@ export default function PlaceMap({
       )}
 
       {children && (
-        <div className="absolute inset-x-2 bottom-2 z-20 max-h-[66%] overflow-y-auto rounded-2xl">
-          {children}
+        <div className="absolute inset-x-2 bottom-2 z-20 flex max-h-[70%] flex-col items-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            aria-label="상세 카드 닫기"
+            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-surface text-ink shadow-card"
+          >
+            <X size={18} aria-hidden />
+          </button>
+          <div className="min-h-0 w-full overflow-y-auto rounded-2xl">{children}</div>
         </div>
       )}
     </div>

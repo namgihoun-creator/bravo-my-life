@@ -197,7 +197,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
     <div
       role="group"
       aria-label="보기 방식"
-      className="theme-t grid shrink-0 grid-cols-2 gap-0.5 rounded-[14px] border border-line bg-surface p-0.5"
+      className="theme-t grid shrink-0 grid-cols-2 gap-px rounded-[14px] border border-line bg-surface p-px"
     >
       {items.map(({ key, label, Icon }) => {
         const active = key === view;
@@ -224,6 +224,7 @@ function FilterChips({
   value,
   counts,
   onChange,
+  showOpenChip,
   openOnly,
   onToggleOpen,
 }: {
@@ -232,6 +233,8 @@ function FilterChips({
   /** 현재 반경 내 필터별 장소 수. null(로딩/오류)이면 모든 칩을 보여준다. */
   counts: Record<string, number> | null;
   onChange: (k: string) => void;
+  /** 영업시간이 확인된 장소가 있을 때만 '지금 영업 중' 칩을 보여준다 */
+  showOpenChip: boolean;
   /** '지금 영업 중 / 지금 이용 가능(24시)' 토글 */
   openOnly: boolean;
   onToggleOpen: () => void;
@@ -281,7 +284,7 @@ function FilterChips({
       </button>
     );
   });
-  items.splice(1, 0, openChip); // '전체' 바로 뒤
+  if (showOpenChip) items.splice(1, 0, openChip); // '전체' 바로 뒤
 
   return (
     <div
@@ -597,12 +600,18 @@ export default function Home() {
   }, [scrollTargetId]);
 
   // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
-  const clock = openOnly ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
+  // 현재 모드에 영업시간이 확인된(상태가 true/false) 장소가 하나도 없으면 '지금 영업 중' 칩을 숨긴다 (빈 결과 유입 방지)
+  const hasKnownHours = useMemo(
+    () => all.some((p) => p.mode === mode && isVisiblePlace(p) && getOpenState(p, nowMs).status !== null),
+    [all, mode, nowMs],
+  );
+  const openActive = openOnly && hasKnownHours;
+  const clock = openActive ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
   const { counts, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
     // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
     const base = all.filter((p) => p.mode === mode && isVisiblePlace(p));
     // '지금 영업 중'이 켜지면 확실히 이용 가능(true)한 곳만 남긴다. 모르는 곳(null)은 허위 표시 없이 제외한다.
-    const pool = openOnly ? base.filter((p) => getOpenState(p, clock).status === true) : base;
+    const pool = openActive ? base.filter((p) => getOpenState(p, clock).status === true) : base;
     const counts =
       loading || error
         ? null
@@ -610,7 +619,7 @@ export default function Home() {
             FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
           );
     const activeFilter = counts && !counts[filter] ? "all" : filter;
-    const unknownExcluded = openOnly
+    const unknownExcluded = openActive
       ? base.filter(
           (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
         ).length
@@ -621,7 +630,7 @@ export default function Home() {
       rawPlaces: pool.filter((p) => matchesFilter(p, activeFilter)),
       unknownExcluded,
     };
-  }, [all, mode, filter, loading, error, openOnly, clock]);
+  }, [all, mode, filter, loading, error, openActive, clock]);
 
   // 분 단위 갱신으로 목록 내용이 그대로인데 배열만 새로 만들어져 지도가 다시 맞춰지지 않도록 id 기준으로 참조를 유지한다
   const placesKey = rawPlaces.map((p) => p.id).join("|");
@@ -673,7 +682,8 @@ export default function Home() {
             value={activeFilter}
             counts={counts}
             onChange={changeFilter}
-            openOnly={openOnly}
+            showOpenChip={hasKnownHours}
+            openOnly={openActive}
             onToggleOpen={() => {
               setOpenOnly((v) => !v);
               setSelectedId(null);
@@ -728,11 +738,11 @@ export default function Home() {
         ) : places.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-body text-muted">
-              {openOnly
+              {openActive
                 ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
                 : "반경 2km 안에 조건에 맞는 장소가 아직 없어요."}
             </p>
-            {openOnly && (
+            {openActive && (
               <button
                 onClick={() => setOpenOnly(false)}
                 className="mt-3 min-h-[44px] cursor-pointer rounded-xl bg-primary px-5 text-label font-bold text-on-primary"
@@ -765,7 +775,7 @@ export default function Home() {
             />
           ))
         )}
-        {openOnly && unknownExcluded > 0 && !loading && !error && (
+        {openActive && unknownExcluded > 0 && !loading && !error && (
           <p className="text-center text-caption text-muted" role="note">
             영업시간 미확인 장소 {unknownExcluded}곳 제외됨
           </p>

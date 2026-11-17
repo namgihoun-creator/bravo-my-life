@@ -45,6 +45,7 @@ function NavAppSheet({
         aria-label="길찾기 앱 선택"
         className="sheet-up relative w-full max-w-md rounded-t-2xl bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))] text-ink shadow-sticky"
       >
+        <div className="sheet-grabber" aria-hidden />
         <div className="flex items-start justify-between gap-2">
           <div>
             <h2 className="text-title2 font-bold tracking-[-0.02em]">길찾기 앱 선택</h2>

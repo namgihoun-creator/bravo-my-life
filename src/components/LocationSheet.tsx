@@ -77,6 +77,7 @@ export default function LocationSheet({
         aria-label="동네 설정"
         className="sheet-up relative w-full max-w-md rounded-t-2xl bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))] text-ink shadow-sticky"
       >
+        <div className="sheet-grabber" aria-hidden />
         <div className="flex items-center justify-between">
           <h2 className="text-title2 font-bold tracking-[-0.02em]">동네 설정</h2>
           <button
