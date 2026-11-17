@@ -24,6 +24,22 @@ export interface KMap {
 export interface KOverlay {
   setMap(map: KMap | null): void;
 }
+export interface KMarker {
+  setMap(map: KMap | null): void;
+}
+export interface KSize {
+  readonly __size?: never;
+}
+export interface KPoint {
+  readonly __point?: never;
+}
+export interface KMarkerImage {
+  readonly __img?: never;
+}
+export interface KClusterer {
+  clear(): void;
+}
+
 export interface KakaoMapsNS {
   load(cb: () => void): void;
   Map: new (el: HTMLElement, opts: { center: KLatLng; level: number }) => KMap;
@@ -38,8 +54,30 @@ export interface KakaoMapsNS {
     clickable?: boolean;
     map?: KMap;
   }) => KOverlay;
+  Size: new (w: number, h: number) => KSize;
+  Point: new (x: number, y: number) => KPoint;
+  MarkerImage: new (src: string, size: KSize, opts?: { offset?: KPoint }) => KMarkerImage;
+  Marker: new (opts: {
+    position: KLatLng;
+    image?: KMarkerImage;
+    title?: string;
+    clickable?: boolean;
+    zIndex?: number;
+  }) => KMarker;
+  /** libraries=clusterer 가 로드돼야 존재한다 (없으면 개별 마커로 폴백) */
+  MarkerClusterer?: new (opts: {
+    map: KMap;
+    markers?: KMarker[];
+    averageCenter?: boolean;
+    minLevel?: number;
+    minClusterSize?: number;
+    gridSize?: number;
+    disableClickZoom?: boolean;
+    calculator?: number[];
+    styles?: Record<string, string>[];
+  }) => KClusterer;
   event: {
-    addListener(target: KMap, type: string, handler: () => void): void;
+    addListener(target: KMap | KMarker, type: string, handler: () => void): void;
   };
 }
 
@@ -71,7 +109,7 @@ export function loadKakaoMaps(): Promise<KakaoMapsNS> {
     };
 
     const script = document.createElement("script");
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false&libraries=clusterer`;
     script.async = true;
 
     const timer = window.setTimeout(() => fail("TIMEOUT", script), TIMEOUT_MS);

@@ -2,10 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MapPinOff } from "lucide-react";
-import { loadKakaoMaps, mapErrorMessage, type KakaoMapsNS, type KMap, type KOverlay } from "@/lib/kakaoMaps";
-import type { Place } from "@/data/places";
+import {
+  loadKakaoMaps,
+  mapErrorMessage,
+  type KakaoMapsNS,
+  type KClusterer,
+  type KMap,
+  type KMarker,
+  type KOverlay,
+} from "@/lib/kakaoMaps";
+import type { Mode, Place } from "@/data/places";
 
 interface Props {
+  mode: Mode;
   center: { lat: number; lng: number; name: string };
   places: Place[];
   selectedId: string | null;
@@ -18,12 +27,54 @@ interface Props {
 
 type Status = "loading" | "ready" | "error";
 
-/** 핀 하나: 44px 터치 영역 버튼 안에 커스텀 핀. 색은 현재 모드의 테마 변수를 따른다(생존=파랑, 노포=갈색/앰버). */
-function pinElement(place: Place, selected: boolean, onClick: () => void): HTMLElement {
+/**
+ * 모드별 핀/클러스터 색 (DESIGN.md 토큰과 같은 값).
+ * SVG data URI·클러스터 스타일은 CSS 변수를 못 쓰므로 상수로 둔다. 생존=파랑, 노포=갈색/앰버.
+ */
+const TONE = {
+  survival: { fill: "#0b5fff", dot: "#ffd60a", text: "#ffffff" },
+  nopo: { fill: "#8a3b12", dot: "#c8963e", text: "#fff8ec" },
+} as const;
+
+/** 클러스터 크기별 스타일 (calculator [10, 30, 100] → 4단계, 모두 44px 이상) */
+function clusterStyles(mode: Mode): Record<string, string>[] {
+  const t = TONE[mode];
+  return [44, 52, 60, 68].map((size) => ({
+    width: `${size}px`,
+    height: `${size}px`,
+    lineHeight: `${size - 6}px`, // border 3px*2 제외
+    borderRadius: "50%",
+    background: t.fill,
+    color: t.text,
+    border: "3px solid #ffffff",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+    textAlign: "center",
+    fontSize: size >= 60 ? "17px" : "15px",
+    fontWeight: "800",
+    cursor: "pointer",
+  }));
+}
+
+/** 개별 핀 이미지: 44x48 투명 캔버스(터치 영역 확보) 하단 중앙에 물방울 핀 */
+function pinImage(kakao: KakaoMapsNS, mode: Mode) {
+  const t = TONE[mode];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="48" viewBox="0 0 44 48">` +
+    `<path d="M22 46C22 46 8 31 8 20.5a14 14 0 0 1 28 0C36 31 22 46 22 46z" fill="${t.fill}" stroke="#fff" stroke-width="2.5"/>` +
+    `<circle cx="22" cy="20.5" r="5" fill="${t.dot}"/></svg>`;
+  return new kakao.MarkerImage(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    new kakao.Size(44, 48),
+    { offset: new kakao.Point(22, 47) },
+  );
+}
+
+/** 선택된 핀: 클러스터에 묶여 사라지지 않도록 별도 오버레이(앰버)로 항상 위에 표시. 44px 터치 영역. */
+function selectedPinElement(place: Place, onClick: () => void): HTMLElement {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = `map-pin-btn${selected ? " is-selected" : ""}`;
-  btn.setAttribute("aria-label", `${place.name}, 도보 ${Math.round(place.distance_m)}m`);
+  btn.className = "map-pin-btn is-selected";
+  btn.setAttribute("aria-label", `${place.name}, 도보 ${Math.round(place.distance_m)}m (선택됨)`);
   btn.innerHTML = `<span class="map-pin"><span class="map-pin-dot"></span></span>`;
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -41,11 +92,21 @@ function centerElement(): HTMLElement {
   return el;
 }
 
-export default function PlaceMap({ center, places, selectedId, onSelect, onFallback, children }: Props) {
+export default function PlaceMap({
+  mode,
+  center,
+  places,
+  selectedId,
+  onSelect,
+  onFallback,
+  children,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KMap | null>(null);
   const kakaoRef = useRef<KakaoMapsNS | null>(null);
   const overlaysRef = useRef<KOverlay[]>([]);
+  const markersRef = useRef<KMarker[]>([]);
+  const clustererRef = useRef<KClusterer | null>(null);
   const onSelectRef = useRef(onSelect);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -80,22 +141,28 @@ export default function PlaceMap({ center, places, selectedId, onSelect, onFallb
       cancelled = true;
       overlaysRef.current.forEach((o) => o.setMap(null));
       overlaysRef.current = [];
+      clustererRef.current?.clear();
+      clustererRef.current = null;
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
       mapRef.current = null;
     };
-    // 지도는 마운트당 한 번만 만든다 (중심 이동은 아래 effect가 처리)
+    // 지도는 마운트당(또는 '다시 시도'당) 한 번만 만든다. 중심 이동은 아래 effect가 처리한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
 
-  // 2) 핀 + 기준 위치 마커 그리기 (장소/선택이 바뀔 때)
+  // 2) 기준 위치 마커 + 핀(클러스터링) 그리기
   useEffect(() => {
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
 
     overlaysRef.current.forEach((o) => o.setMap(null));
-    const next: KOverlay[] = [];
+    clustererRef.current?.clear();
+    markersRef.current.forEach((m) => m.setMap(null));
+    const overlays: KOverlay[] = [];
 
-    next.push(
+    overlays.push(
       new kakao.CustomOverlay({
         position: new kakao.LatLng(center.lat, center.lng),
         content: centerElement(),
@@ -105,22 +172,56 @@ export default function PlaceMap({ center, places, selectedId, onSelect, onFallb
         map,
       }),
     );
-    for (const p of places) {
-      const selected = p.id === selectedId;
-      next.push(
+
+    const selectedPlace = places.find((p) => p.id === selectedId);
+    if (selectedPlace) {
+      overlays.push(
         new kakao.CustomOverlay({
-          position: new kakao.LatLng(p.lat, p.lng),
-          content: pinElement(p, selected, () => onSelectRef.current(p.id)),
+          position: new kakao.LatLng(selectedPlace.lat, selectedPlace.lng),
+          content: selectedPinElement(selectedPlace, () => onSelectRef.current(selectedPlace.id)),
           xAnchor: 0.5,
           yAnchor: 1,
-          zIndex: selected ? 10 : 2,
+          zIndex: 10,
           clickable: true, // 핀 클릭이 지도 click(닫기)으로 번지지 않게
           map,
         }),
       );
     }
-    overlaysRef.current = next;
-  }, [status, places, selectedId, center.lat, center.lng]);
+
+    // 나머지 핀: 겹치는 구역은 MarkerClusterer 가 숫자로 묶고, 클러스터를 누르거나 확대하면 개별 핀으로 펼쳐진다
+    const image = pinImage(kakao, mode);
+    const markers = places
+      .filter((p) => p.id !== selectedId)
+      .map((p) => {
+        const marker = new kakao.Marker({
+          position: new kakao.LatLng(p.lat, p.lng),
+          image,
+          title: `${p.name}, 도보 ${Math.round(p.distance_m)}m`,
+          clickable: true,
+        });
+        kakao.event.addListener(marker, "click", () => onSelectRef.current(p.id));
+        return marker;
+      });
+
+    if (kakao.MarkerClusterer) {
+      clustererRef.current = new kakao.MarkerClusterer({
+        map,
+        markers,
+        averageCenter: true,
+        minLevel: 4, // 레벨 1~3(가까이 확대)에서는 개별 핀
+        minClusterSize: 2,
+        gridSize: 60,
+        calculator: [10, 30, 100],
+        styles: clusterStyles(mode),
+      });
+    } else {
+      // libraries=clusterer 가 막혀도 핀은 보이게 한다
+      clustererRef.current = null;
+      markers.forEach((m) => m.setMap(map));
+    }
+    markersRef.current = markers;
+    overlaysRef.current = overlays;
+  }, [status, places, selectedId, mode, center.lat, center.lng]);
 
   // 3) 기준 위치/장소 목록이 바뀌면 전체가 보이게 맞춤
   useEffect(() => {
@@ -166,7 +267,10 @@ export default function PlaceMap({ center, places, selectedId, onSelect, onFallb
       <div ref={containerRef} className="absolute inset-0" aria-label="장소 지도" />
 
       {status === "loading" && (
-        <div className="absolute inset-0 flex items-center justify-center text-label text-muted" role="status">
+        <div
+          className="absolute inset-0 flex items-center justify-center text-label text-muted"
+          role="status"
+        >
           지도를 불러오는 중…
         </div>
       )}
@@ -202,7 +306,9 @@ export default function PlaceMap({ center, places, selectedId, onSelect, onFallb
       )}
 
       {children && (
-        <div className="absolute inset-x-2 bottom-2 z-20 max-h-[66%] overflow-y-auto rounded-2xl">{children}</div>
+        <div className="absolute inset-x-2 bottom-2 z-20 max-h-[66%] overflow-y-auto rounded-2xl">
+          {children}
+        </div>
       )}
     </div>
   );

@@ -334,6 +334,8 @@ def load_parking() -> list[dict]:
                 continue
             if (row["주차장구분"] or "").strip() != "공영":
                 continue
+            if "거주자" in (row["주차장명"] or ""):
+                continue  # 거주자우선주차장 제외
             try:
                 row["lat"], row["lng"] = float(row["위도"]), float(row["경도"])
             except ValueError:
@@ -422,6 +424,8 @@ def enrich_parking(client, dry: bool) -> None:
     updates: list[tuple[str, dict]] = []
     matched = municipal = 0
     for r in rows:
+        if "거주자" in r["name"]:
+            continue  # 거주자우선주차장은 매칭·보강 대상이 아님 (DB에서도 삭제됨)
         gx, gy = int(r["lat"] * 200), int(r["lng"] * 200)
         near = [
             (dist_m(r["lat"], r["lng"], c["lat"], c["lng"]), c)

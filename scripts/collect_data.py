@@ -154,6 +154,8 @@ def survival_row(doc: dict, category: str, query: str) -> dict | None:
     }[category]
     if not any(k in name or k in cat_name for k in must):
         return None
+    if category == "parking" and "거주자" in name:
+        return None  # 거주자우선주차장은 일반 이용 불가 → 영구 제외
 
     tags = list(DEFAULT_TAGS[category])
     badge = ""

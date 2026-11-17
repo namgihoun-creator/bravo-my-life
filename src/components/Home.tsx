@@ -570,6 +570,7 @@ export default function Home() {
           </div>
         ) : view === "map" && center ? (
           <PlaceMap
+            mode={mode}
             center={center}
             places={places}
             selectedId={selected?.id ?? null}
