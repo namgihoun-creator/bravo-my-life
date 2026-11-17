@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Award,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   LocateFixed,
   MapPin,
   Navigation,
+  Plus,
   Siren,
   Store,
 } from "lucide-react";
@@ -21,7 +22,9 @@ import {
   type Place,
 } from "@/data/places";
 import { getSupabase } from "@/lib/supabase";
+import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
+import ReportSheet from "./ReportSheet";
 
 const RADIUS_M = 2000;
 
@@ -184,27 +187,6 @@ function FilterChips({
   );
 }
 
-const VOTES_KEY = "bml_votes";
-
-function readVotes(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(VOTES_KEY) ?? "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeVote(id: string, on: boolean) {
-  try {
-    const votes = readVotes();
-    if (on) votes.add(id);
-    else votes.delete(id);
-    localStorage.setItem(VOTES_KEY, JSON.stringify([...votes]));
-  } catch {
-    /* 저장 불가 환경에서는 무시 */
-  }
-}
-
 /** 원클릭 현장 피드백 칩: 누르면 즉시 +1(낙관적 업데이트) 후 `bml_update_feedback` RPC로 DB에 영구 저장 */
 function FeedbackChip({
   placeId,
@@ -220,8 +202,12 @@ function FeedbackChip({
   count: number;
 }) {
   const voteId = `${placeId}:${chipKey}`;
-  // 카드는 클라이언트 데이터 로드 이후에만 렌더되므로 lazy init이 하이드레이션과 충돌하지 않는다.
-  const [voted, setVoted] = useState(() => readVotes().has(voteId));
+  // 투표 여부는 localStorage 스토어가 단일 진실: 이미 투표했으면 취소(-1)만, 아니면 +1만 가능
+  const voted = useSyncExternalStore(
+    subscribeVotes,
+    () => hasVoted(voteId),
+    () => false,
+  );
   const [serverCount, setServerCount] = useState(count);
   const [pending, setPending] = useState(false);
 
@@ -229,9 +215,9 @@ function FeedbackChip({
     if (pending) return;
     const next = !voted;
     const delta = next ? 1 : -1;
-    setVoted(next);
-    setServerCount((c) => Math.max(0, c + delta));
     setPending(true);
+    setVoted(voteId, next); // 요청 전에 먼저 잠금 저장
+    setServerCount((c) => Math.max(0, c + delta));
     const { data, error } = await getSupabase().rpc("bml_update_feedback", {
       p_place_id: placeId,
       p_key: chipKey,
@@ -240,11 +226,10 @@ function FeedbackChip({
     setPending(false);
     if (error) {
       console.error("bml_update_feedback", error);
-      setVoted(!next);
+      setVoted(voteId, !next);
       setServerCount((c) => Math.max(0, c - delta));
       return;
     }
-    writeVote(voteId, next);
     const fresh = (data as Record<string, number> | null)?.[chipKey];
     if (typeof fresh === "number") setServerCount(fresh);
   }
@@ -252,9 +237,11 @@ function FeedbackChip({
   return (
     <button
       aria-pressed={voted}
-      aria-label={`${label} ${serverCount}명, 누르면 ${voted ? "취소" : "추가"}`}
+      aria-busy={pending}
+      disabled={pending}
+      aria-label={`${label} ${serverCount}명, ${voted ? "투표함 · 누르면 취소" : "누르면 추가"}`}
       onClick={toggle}
-      className={`theme-t tnum inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border px-3 text-caption font-semibold active:scale-[0.97] ${
+      className={`theme-t tnum inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border px-3 text-caption font-semibold active:scale-[0.97] disabled:cursor-wait ${
         voted ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
       }`}
     >
@@ -376,6 +363,8 @@ export default function Home() {
   const [filter, setFilter] = useState("all");
   const [loc, setLoc] = useState<Loc>({ kind: "pending" });
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   // scrollTargetId: 스크롤 이동 대상 / highlightId: 도착 후 링 강조 중인 카드
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
@@ -523,6 +512,12 @@ export default function Home() {
             >
               다른 동네 보기
             </button>
+            <button
+              onClick={() => setReportOpen(true)}
+              className="ml-2 mt-3 min-h-[44px] cursor-pointer rounded-xl border border-line px-5 text-label font-semibold text-ink"
+            >
+              장소 제보
+            </button>
           </div>
         ) : (
           places.map((p) => (
@@ -535,10 +530,42 @@ export default function Home() {
             />
           ))
         )}
-        <p className="pt-2 text-center text-caption text-muted">
-          카카오 로컬 데이터 기반 · 영업시간·요금은 방문 전 확인해 주세요.
-        </p>
+        <div className="pt-2 text-center">
+          <button
+            onClick={() => setReportOpen(true)}
+            className="inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border border-primary px-4 text-label font-semibold text-primary"
+          >
+            <Plus size={16} aria-hidden />
+            장소 제보
+          </button>
+          <p className="mt-2 text-caption text-muted">
+            카카오 로컬 데이터 기반 · 영업시간·요금은 방문 전 확인해 주세요.
+          </p>
+        </div>
       </main>
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed inset-x-0 bottom-[max(16px,env(safe-area-inset-bottom))] z-40 mx-auto w-fit max-w-[90%] rounded-full bg-ink px-4 py-2.5 text-label font-semibold text-bg shadow-sticky"
+        >
+          {toast}
+        </div>
+      )}
+
+      {reportOpen && (
+        <ReportSheet
+          defaultMode={mode}
+          onClose={() => setReportOpen(false)}
+          getPosition={getGps}
+          onDone={() => {
+            setReportOpen(false);
+            setNonce((n) => n + 1); // 방금 제보한 장소가 목록에 반영되도록 다시 조회
+            setToast("제보가 등록됐어요. 고마워요!");
+            window.setTimeout(() => setToast(null), 2500);
+          }}
+        />
+      )}
 
       {sheetOpen && (
         <LocationSheet

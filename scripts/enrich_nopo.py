@@ -179,6 +179,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="블로그 검증 대상 최대 건수(테스트용)")
+    ap.add_argument("--stage1-only", action="store_true", help="프랜차이즈·카페 삭제만 하고 블로그 검증은 건너뜀")
     args = ap.parse_args()
 
     from supabase import create_client
@@ -212,7 +213,7 @@ def main() -> int:
     print(f"      프랜차이즈 브랜드 {len(franchise)}개 예: {', '.join(list(franchise)[:8])}")
 
     # ── 2차: 블로그 교차 검증 ──
-    targets = keep[: args.limit] if args.limit else keep
+    targets = [] if args.stage1_only else (keep[: args.limit] if args.limit else keep)
     results: dict[str, dict] = {}
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=4) as ex:

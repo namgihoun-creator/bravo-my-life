@@ -83,7 +83,7 @@ export const FEEDBACK_CHIPS: Record<string, FeedbackChipDef[]> = {
   general: NOPO_CHIPS,
 };
 
-/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 12곳) */
+/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 18곳) */
 export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "홍대입구역", lat: 37.5572, lng: 126.9245 },
   { name: "성수역", lat: 37.5446, lng: 127.056 },
@@ -97,6 +97,12 @@ export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "판교역", lat: 37.3948, lng: 127.1112 },
   { name: "안양역", lat: 37.4017, lng: 126.9227 },
   { name: "정발산역", lat: 37.6595, lng: 126.7733 },
+  { name: "송내역", lat: 37.4875, lng: 126.7534 },
+  { name: "영등포역", lat: 37.5156, lng: 126.9076 },
+  { name: "사당역", lat: 37.4765, lng: 126.9816 },
+  { name: "신촌역", lat: 37.5551, lng: 126.9368 },
+  { name: "서현역", lat: 37.3846, lng: 127.1231 },
+  { name: "부평역", lat: 37.4896, lng: 126.7243 },
 ];
 
 export const FALLBACK_LOCATION = { name: "부천역 인근", lat: 37.4844, lng: 126.783 };
@@ -138,3 +144,21 @@ export function nearestParking(
   if (!place.tags.includes(NO_PARKING_TAG) && best.m > PARKING_LINK_MAX_M) return null;
   return { parking: best.parking, walkMin: walkMinutes(best.m) };
 }
+
+/** '장소 제보' 폼의 모드별 카테고리 (서버 라우트의 화이트리스트와 동일해야 한다) */
+export const REPORT_CATEGORIES: Record<Mode, { key: string; label: string }[]> = {
+  survival: [
+    { key: "laundry", label: "코인세탁" },
+    { key: "print", label: "무인프린트" },
+    { key: "pharmacy", label: "심야약국" },
+    { key: "parking", label: "공영주차장" },
+    { key: "battery", label: "보조배터리" },
+    { key: "toilet", label: "개방화장실" },
+  ],
+  nopo: [
+    { key: "soup", label: "해장·국밥" },
+    { key: "pocha", label: "노포포차" },
+    { key: "solo", label: "혼밥성지" },
+    { key: "general", label: "기타 노포" },
+  ],
+};

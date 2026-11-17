@@ -52,6 +52,7 @@ OUT = ROOT / "scripts" / "out"
 EXCLUDED_FILE = ROOT / "scripts" / "data" / "nopo_excluded.json"
 OPEN_YEARS_FILE = ROOT / "scripts" / "data" / "open_years.json"
 
+REGIONS = ("서울특별시", "경기도", "인천광역시")  # 부평역 거점 때문에 인천 포함
 TODAY_YEAR = date.today().year
 MIN_AGE = 15
 
@@ -119,7 +120,7 @@ def load_restaurants(names: set[str]) -> dict[str, list[dict]]:
             if len(row) <= i_jibun:
                 continue
             road, jibun = row[i_road], row[i_jibun]
-            if not ("서울특별시" in road or "경기도" in road or "서울특별시" in jibun or "경기도" in jibun):
+            if not any(k in road or k in jibun for k in REGIONS):
                 continue
             if not row[i_state].startswith("영업"):
                 continue
@@ -135,7 +136,7 @@ def load_restaurants(names: set[str]) -> dict[str, list[dict]]:
             )
             if n % 1_000_000 == 0:
                 print(f"  {n:,}행 처리 ({time.time() - t0:.0f}s), 매칭 후보 {kept:,}")
-    print(f"[CSV] 총 {n:,}행 → DB 상호와 일치하는 서울·경기 영업 행 {kept:,}건 ({time.time() - t0:.0f}s)")
+    print(f"[CSV] 총 {n:,}행 → DB 상호와 일치하는 서울·경기·인천 영업 행 {kept:,}건 ({time.time() - t0:.0f}s)")
     return out
 
 
@@ -329,7 +330,7 @@ def load_parking() -> list[dict]:
     with PARKING_CSV.open(encoding=enc, newline="") as f:
         for row in csv.DictReader(f):
             addr = (row["소재지도로명주소"] or "") + " " + (row["소재지지번주소"] or "")
-            if not (addr.strip().startswith(("서울", "경기")) or "서울특별시" in addr or "경기도" in addr):
+            if not any(k in addr for k in REGIONS):
                 continue
             if (row["주차장구분"] or "").strip() != "공영":
                 continue
@@ -338,7 +339,7 @@ def load_parking() -> list[dict]:
             except ValueError:
                 continue
             out.append(row)
-    print(f"[주차장] CSV 서울·경기 공영 {len(out):,}건 (인코딩 {enc})")
+    print(f"[주차장] CSV 서울·경기·인천 공영 {len(out):,}건 (인코딩 {enc})")
     return out
 
 
@@ -356,15 +357,70 @@ TYPE_TAG = {"노외": "#노외주차장", "노상": "#노상주차", "건축물�
 SPECIAL = {"#기계식주의", "#지하주차장", "#노상주차"}
 
 
+def region_key(addr: str) -> str | None:
+    """주소 → 지자체 단위. 서울·인천은 '구', 경기는 '시/군' (예: 경기 부천시 원미구 → 부천시)."""
+    toks = re.sub(r"\(.*?\)", " ", addr).split()[:4]
+    if not toks:
+        return None
+    if toks[0].startswith(("서울", "인천")):
+        return next((t for t in toks[1:] if re.search(r"구$", t)), None)
+    return next((t for t in toks[1:] if re.search(r"[가-힣](시|군)$", t)), None)
+
+
+def ten_min_price(c: dict) -> float | None:
+    ut, uf = to_int(c["추가단위시간"]), to_int(c["추가단위요금"])
+    bt, bf = to_int(c["주차기본시간"]), to_int(c["주차기본요금"])
+    if ut and uf:
+        return uf * 10 / ut
+    if bt and bf:
+        return bf * 10 / bt
+    return None
+
+
+def region_fee_stats(lots: list[dict]) -> dict[str, tuple[int, int, int]]:
+    """지자체별 공영주차장 10분당 요금 범위(하위10%~상위10%, 100원 단위) — 공공데이터에 요금이 있는 곳만, 3곳 이상일 때."""
+    by: dict[str, list[float]] = defaultdict(list)
+    for c in lots:
+        key = region_key((c["소재지도로명주소"] or "") + " " + (c["소재지지번주소"] or "")) or region_key(
+            c["소재지지번주소"] or ""
+        )
+        p = ten_min_price(c)
+        if key and p:
+            by[key].append(p)
+    out = {}
+    for k, v in by.items():
+        if len(v) >= 3:
+            v.sort()
+            lo, hi = v[int(len(v) * 0.1)], v[min(len(v) - 1, int(len(v) * 0.9))]
+            out[k] = (len(v), max(100, round(lo / 100) * 100), max(100, round(hi / 100) * 100))
+    return out
+
+
+def municipal_summary(region: str | None, stats: dict, hours_txt: str | None) -> str:
+    """요금 정보가 없는 지자체 공영주차장 요약. 공공데이터에 근거한 범위만 쓰고, 없으면 '정보 없음'을 솔직히 적는다."""
+    name = region or "지자체"
+    if region in stats:
+        _, lo, hi = stats[region]
+        rng = f"{lo}원" if lo == hi else f"{lo}~{hi}원"
+        text = f"{name} 공영 10분당 {rng} 수준, 현장 확인 권장."
+    else:
+        text = f"{name} 공영주차장은 요금 공개 정보가 없어요. 현장 확인 권장."
+    if hours_txt and len(text) + len(hours_txt) + 1 <= 50:
+        text += f" {hours_txt}."
+    return text
+
+
 def enrich_parking(client, dry: bool) -> None:
     lots = load_parking()
     grid: dict[tuple[int, int], list[dict]] = defaultdict(list)
     for c in lots:
         grid[(int(c["lat"] * 200), int(c["lng"] * 200))].append(c)
 
-    rows = fetch_all(client, {"category": "parking"}, "id,name,lat,lng,tags,summary,badge")
+    stats = region_fee_stats(lots)
+    rows = fetch_all(client, {"category": "parking"}, "id,name,address,lat,lng,tags,summary,badge")
     print(f"[주차장] DB {len(rows)}건")
     updates: list[tuple[str, dict]] = []
+    matched = municipal = 0
     for r in rows:
         gx, gy = int(r["lat"] * 200), int(r["lng"] * 200)
         near = [
@@ -374,25 +430,38 @@ def enrich_parking(client, dry: bool) -> None:
             for c in grid.get((gx + dx, gy + dy), [])
         ]
         near = [(d, c) for d, c in near if d <= 200]
-        if not near:
-            continue
-        scored = sorted(
-            ((SequenceMatcher(None, pk_norm(r["name"]), pk_norm(c["주차장명"])).ratio(), d, c) for d, c in near),
-            key=lambda x: (-x[0], x[1]),
-        )
-        ratio, d, c = scored[0]
-        if not (ratio >= 0.55 or (d <= 60 and len(near) == 1)):
-            continue
+        best = None
+        if near:
+            scored = sorted(
+                ((SequenceMatcher(None, pk_norm(r["name"]), pk_norm(c["주차장명"])).ratio(), d, c) for d, c in near),
+                key=lambda x: (-x[0], x[1]),
+            )
+            ratio, d, c = scored[0]
+            if ratio >= 0.55 or (d <= 60 and len(near) == 1):
+                best = c
 
-        spec = parking_spec(c)
-        cur_special = next((t for t in r["tags"] if t in SPECIAL), None)
-        third = spec["third"] or cur_special or TYPE_TAG.get(spec["type"], "#공영주차장")
-        tags = list(dict.fromkeys([spec["fee_tag"], spec["hours_tag"], third]))
-        while len(tags) < 3:
-            tags.append("#공영주차장")
-        updates.append((r["id"], {"tags": tags[:3], "summary": spec["summary"]}))
+        tags, summary, hours_txt = list(r["tags"]), r["summary"], None
+        if best:
+            spec = parking_spec(best)
+            cur_special = next((t for t in r["tags"] if t in SPECIAL), None)
+            third = spec["third"] or cur_special or TYPE_TAG.get(spec["type"], "#공영주차장")
+            tags = list(dict.fromkeys([spec["fee_tag"], spec["hours_tag"], third]))
+            while len(tags) < 3:
+                tags.append("#공영주차장")
+            summary, hours_txt = spec["summary"], spec["summary"].split(", ", 1)[-1].rstrip(".")
+            matched += 1
 
-    print(f"[주차장] CSV와 매칭·갱신 {len(updates)}건 / 미매칭 {len(rows) - len(updates)}건(민영 등)")
+        # 요금이 끝내 비어 있는 '공영' 주차장 → 지자체 공영 태그 + 지자체 단위 안내
+        if "#요금현장확인" in tags and (best or "공영" in r["name"]):
+            region = region_key(r["address"] or "")
+            tags = ["#지자체공영" if t == "#요금현장확인" else t for t in tags]
+            summary = municipal_summary(region, stats, hours_txt if best else None)
+            municipal += 1
+        elif not best:
+            continue
+        updates.append((r["id"], {"tags": tags[:3], "summary": summary}))
+
+    print(f"[주차장] CSV 매칭 {matched}건, 지자체공영 안내 {municipal}건 → 갱신 {len(updates)}건 / 그대로 {len(rows) - len(updates)}건")
     for rid, u in updates[:6]:
         nm = next(x["name"] for x in rows if x["id"] == rid)
         print(f"   ✓ {nm}: {u['tags']} | {u['summary']}")
