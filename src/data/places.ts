@@ -26,6 +26,7 @@ export interface Place {
 export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
   survival: [
     { key: "all", label: "전체" },
+    { key: "fav", label: "찜" },
     { key: "laundry", label: "24시 코인세탁" },
     { key: "print", label: "무인프린트" },
     { key: "pharmacy", label: "심야약국" },
@@ -35,6 +36,7 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
   ],
   nopo: [
     { key: "all", label: "전체" },
+    { key: "fav", label: "찜" },
     { key: "y10", label: "10년+" },
     { key: "y15", label: "15년+" },
     { key: "y20", label: "20년+" },
@@ -115,6 +117,10 @@ const PARKING_LINK_MAX_M = 600;
 
 export function walkMinutes(distanceM: number) {
   return Math.max(1, Math.ceil(distanceM / WALK_M_PER_MIN));
+}
+
+export function distanceM(aLat: number, aLng: number, bLat: number, bLng: number) {
+  return haversineM(aLat, aLng, bLat, bLng);
 }
 
 function haversineM(aLat: number, aLng: number, bLat: number, bLng: number) {
@@ -198,11 +204,17 @@ export function isVisiblePlace(p: Place): boolean {
 
 /** 필터 칩 매칭 (업력 칩은 'y10' 형태 — N년 이상) */
 export function matchesFilter(p: Place, key: string): boolean {
-  if (key === "all") return true;
+  if (key === "all" || key === "fav") return true; // 'fav'는 찜 목록을 미리 골라 둔 풀에서 쓰므로 추가 조건 없음
   const m = /^y(\d+)$/.exec(key);
   if (m) {
     const y = yearsInBusiness(p);
     return y !== null && y >= Number(m[1]);
   }
   return p.category === key || !!p.extra?.includes(key);
+}
+
+/** 노포 음식 업종 라벨 (예: '한식 · 고기·구이'). 수집 스크립트가 extra 배열의 'food:' 항목으로 저장한다. */
+export function foodLabel(p: Place): string | null {
+  const e = p.extra?.find((x) => x.startsWith("food:"));
+  return e ? e.slice(5) : null;
 }

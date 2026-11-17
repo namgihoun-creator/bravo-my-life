@@ -132,7 +132,7 @@ export default function NavigationButton({ target, origin }: { target: NavTarget
 
   return (
     <>
-      <div className={`nav-btn nav-btn-${app} theme-t mt-3 flex h-12 w-full overflow-hidden rounded-xl`}>
+      <div className={`nav-btn nav-btn-${app} theme-t flex h-12 min-w-0 flex-1 overflow-hidden rounded-xl`}>
         <button
           onClick={() => openNavigation(app, target, origin)}
           className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 text-label font-bold active:opacity-90"

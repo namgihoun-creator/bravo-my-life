@@ -5,19 +5,24 @@ import {
   Award,
   ChevronDown,
   Clock3,
+  Heart,
   LocateFixed,
   MapPin,
   List,
   Map as MapIcon,
   Plus,
+  Share2,
   Siren,
   Store,
+  UtensilsCrossed,
 } from "lucide-react";
 import {
   FALLBACK_LOCATION,
   FEEDBACK_CHIPS,
   FILTERS,
   ageTier,
+  distanceM,
+  foodLabel,
   isVisiblePlace,
   matchesFilter,
   nearestParking,
@@ -26,7 +31,9 @@ import {
   type Mode,
   type Place,
 } from "@/data/places";
+import { toggleFavorite, useFavorites } from "@/lib/favorites";
 import { getOpenState } from "@/lib/openStatus";
+import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
 import { getSupabase } from "@/lib/supabase";
 import { useMinuteClock } from "@/lib/useMinuteClock";
@@ -224,6 +231,7 @@ function FilterChips({
   mode,
   value,
   counts,
+  favCount,
   onChange,
   showOpenChip,
   openOnly,
@@ -233,6 +241,8 @@ function FilterChips({
   value: string;
   /** 현재 반경 내 필터별 장소 수. null(로딩/오류)이면 모든 칩을 보여준다. */
   counts: Record<string, number> | null;
+  /** 이 모드에서 찜한 장소 수 (1 이상이면 '찜 N') */
+  favCount: number;
   onChange: (k: string) => void;
   /** 영업시간이 확인된 장소가 있을 때만 '지금 영업 중' 칩을 보여준다 */
   showOpenChip: boolean;
@@ -249,7 +259,10 @@ function FilterChips({
       ?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [mode, value]);
 
-  const chips = FILTERS[mode].filter((f) => !counts || f.key === "all" || counts[f.key] > 0);
+  // '찜' 칩은 0건이어도 항상 보인다(발견 가능성). 나머지는 0건이면 숨긴다.
+  const chips = FILTERS[mode].filter(
+    (f) => !counts || f.key === "all" || f.key === "fav" || counts[f.key] > 0,
+  );
   const openLabel = mode === "survival" ? "지금 이용 가능(24시)" : "지금 영업 중";
 
   const openChip = (
@@ -271,6 +284,27 @@ function FilterChips({
 
   const items = chips.map((f) => {
     const active = f.key === value;
+    if (f.key === "fav") {
+      return (
+        <button
+          key={f.key}
+          data-filter-chip
+          aria-pressed={active}
+          onClick={() => onChange(f.key)}
+          className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
+            active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
+          }`}
+        >
+          <Heart
+            size={14}
+            aria-hidden
+            fill={favCount > 0 ? "currentColor" : "none"}
+            className={active ? "" : favCount > 0 ? "text-danger" : ""}
+          />
+          {favCount > 0 ? `찜 ${favCount}` : "찜"}
+        </button>
+      );
+    }
     return (
       <button
         key={f.key}
@@ -285,7 +319,8 @@ function FilterChips({
       </button>
     );
   });
-  if (showOpenChip) items.splice(1, 0, openChip); // '전체' 바로 뒤
+  // 순서: 전체 · 찜 · 지금 영업 중 · 카테고리/연차
+  if (showOpenChip) items.splice(Math.min(2, items.length), 0, openChip);
 
   return (
     <div
@@ -388,6 +423,8 @@ function PlaceCard({
   const BadgeIcon = isSurvival ? Clock3 : Award;
   const dist = Math.round(place.distance_m);
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
+  const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
+  const fav = !!useFavorites()[place.id];
 
   return (
     <article
@@ -410,9 +447,18 @@ function PlaceCard({
         )}
       </div>
 
+      {food && (
+        <p className="mt-0.5 flex items-center gap-1 text-label font-semibold text-muted">
+          <UtensilsCrossed size={14} className="shrink-0" aria-hidden />
+          {food}
+        </p>
+      )}
+
       <p className="tnum mt-1 text-distance font-extrabold tracking-[-0.02em] text-primary">
         도보 {walkMinutes(place.distance_m)}분
-        <span className="ml-1.5 text-label font-semibold text-muted">· {dist}m</span>
+        <span className="ml-1.5 text-label font-semibold text-muted">
+          · {dist >= 1000 ? `${(dist / 1000).toFixed(1)}km` : `${dist}m`}
+        </span>
       </p>
 
       <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="핵심 스펙">
@@ -449,10 +495,31 @@ function PlaceCard({
         </div>
       )}
 
-      <NavigationButton
-        target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }}
-        origin={origin}
-      />
+      <div className="mt-3 flex gap-2">
+        <NavigationButton
+          target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }}
+          origin={origin}
+        />
+        <button
+          onClick={() => sharePlace(place)}
+          aria-label={`${place.name} 공유하기`}
+          className="theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-line bg-surface text-ink active:opacity-80"
+        >
+          <Share2 size={16} aria-hidden />
+          <span className="text-caption font-semibold">공유</span>
+        </button>
+        <button
+          onClick={() => toggleFavorite(place)}
+          aria-pressed={fav}
+          aria-label={fav ? `${place.name} 찜 해제` : `${place.name} 찜하기`}
+          className={`theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border bg-surface active:opacity-80 ${
+            fav ? "border-danger text-danger" : "border-line text-ink"
+          }`}
+        >
+          <Heart size={16} aria-hidden fill={fav ? "currentColor" : "none"} />
+          <span className="text-caption font-semibold">찜</span>
+        </button>
+      </div>
 
       {near && (
         <button
@@ -502,6 +569,7 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
   const [openOnly, setOpenOnly] = useState(false); // '지금 영업 중 / 이용 가능(24시)' 필터
   const nowMs = useMinuteClock();
+  const favorites = useFavorites();
   // scrollTargetId: 스크롤 이동 대상 / highlightId: 도착 후 링 강조 중인 카드
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -607,6 +675,11 @@ export default function Home() {
   }, [scrollTargetId]);
 
   // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
+  // 찜 거리 재계산용 기준 위치 (참조가 loc가 바뀔 때만 바뀌게 한다)
+  const centerPoint = useMemo(
+    () => (loc.kind === "pending" ? null : { lat: loc.lat, lng: loc.lng }),
+    [loc],
+  );
   // 현재 모드에 영업시간이 확인된(상태가 true/false) 장소가 하나도 없으면 '지금 영업 중' 칩을 숨긴다 (빈 결과 유입 방지)
   const hasKnownHours = useMemo(
     () => all.some((p) => p.mode === mode && isVisiblePlace(p) && getOpenState(p, nowMs).status !== null),
@@ -614,30 +687,49 @@ export default function Home() {
   );
   const openActive = openOnly && hasKnownHours;
   const clock = openActive ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
-  const { counts, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
+  const { counts, favCount, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
     // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
     const base = all.filter((p) => p.mode === mode && isVisiblePlace(p));
+    // 찜 목록: 기기에 저장된 스냅샷이라 오프라인·다른 동네에서도 보인다. 조회된 최신 정보가 있으면 그것을 쓰고,
+    // 없으면 스냅샷의 거리를 현재 기준 위치로 다시 계산한다.
+    const fresh = new Map(all.map((p) => [p.id, p]));
+    const favBase = Object.values(favorites)
+      .filter((p) => p.mode === mode)
+      .map(
+        (p) =>
+          fresh.get(p.id) ??
+          (centerPoint ? { ...p, distance_m: distanceM(centerPoint.lat, centerPoint.lng, p.lat, p.lng) } : p),
+      )
+      .sort((a, b) => a.distance_m - b.distance_m);
     // '지금 영업 중'이 켜지면 확실히 이용 가능(true)한 곳만 남긴다. 모르는 곳(null)은 허위 표시 없이 제외한다.
-    const pool = openActive ? base.filter((p) => getOpenState(p, clock).status === true) : base;
-    const counts =
+    const isOpen = (p: Place) => getOpenState(p, clock).status === true;
+    const pool = openActive ? base.filter(isOpen) : base;
+    const favPool = openActive ? favBase.filter(isOpen) : favBase;
+    const counts: Record<string, number> | null =
       loading || error
         ? null
-        : Object.fromEntries(
-            FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
-          );
-    const activeFilter = counts && !counts[filter] ? "all" : filter;
+        : {
+            ...Object.fromEntries(
+              FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
+            ),
+            fav: favBase.length,
+          };
+    const favMode = filter === "fav" && favBase.length > 0;
+    const activeFilter = favMode ? "fav" : counts && !counts[filter] ? "all" : filter === "fav" ? "all" : filter;
     const unknownExcluded = openActive
-      ? base.filter(
+      ? (activeFilter === "fav" ? favBase : base).filter(
           (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
         ).length
       : 0;
     return {
       counts,
+      favCount: favBase.length,
       activeFilter,
-      rawPlaces: pool.filter((p) => matchesFilter(p, activeFilter)),
+      rawPlaces:
+        activeFilter === "fav" ? favPool : pool.filter((p) => matchesFilter(p, activeFilter)),
       unknownExcluded,
     };
-  }, [all, mode, filter, loading, error, openActive, clock]);
+  }, [all, mode, filter, loading, error, openActive, clock, favorites, centerPoint]);
 
   // 분 단위 갱신으로 목록 내용이 그대로인데 배열만 새로 만들어져 지도가 다시 맞춰지지 않도록 id 기준으로 참조를 유지한다
   const placesKey = rawPlaces.map((p) => p.id).join("|");
@@ -693,6 +785,7 @@ export default function Home() {
             mode={mode}
             value={activeFilter}
             counts={counts}
+            favCount={favCount}
             onChange={changeFilter}
             showOpenChip={hasKnownHours}
             openOnly={openActive}
@@ -709,7 +802,7 @@ export default function Home() {
         className="space-y-3 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4"
         aria-busy={loading}
       >
-        {loading ? (
+        {loading && activeFilter !== "fav" ? (
           view === "map" ? (
             <div className="h-[calc(100dvh-250px)] min-h-[380px] animate-pulse rounded-2xl bg-tag-bg" aria-hidden />
           ) : (
@@ -718,7 +811,7 @@ export default function Home() {
               <SkeletonCard />
             </>
           )
-        ) : error ? (
+        ) : error && activeFilter !== "fav" ? (
           <div className="py-12 text-center">
             <p className="text-body text-ink">데이터를 불러오지 못했어요.</p>
             <button

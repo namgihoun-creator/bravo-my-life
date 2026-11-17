@@ -16,6 +16,8 @@
 [2] 공영주차장 (category='parking')
     - 서울·경기 '공영' 주차장 CSV와 좌표(+이름 유사도)로 매칭해 요금·운영시간 태그/요약 갱신
 
+[4] 업종 분류 (--classify): 검증 노포를 위생업태명+상호 키워드로 분류해 extra('food:한식 · 고기·구이'), 태그(업종 태그 앞쪽),
+    요약('2011년 개업 · 한식(고기·구이) 전문점이에요.')을 갱신 — 뱃지(업력 N년)와 겹치는 문구 제거
 [3] 2차 매칭 (--pass2): open_year가 빈 노포를 '정규화 주소 정확 일치 + 인허가 10년 이상 + 상호 핵심명 일치'로 추가 확정
 
 사용법:  python scripts/enrich_data.py [--dry-run] [--skip-nopo] [--skip-parking] [--no-blog] [--pass2]
@@ -682,6 +684,234 @@ def second_pass(client, dry: bool, use_blog: bool) -> None:
     print(f"[2차] DB 반영 완료: 갱신 {len(updates)}건")
 
 
+# ───────────────────────── [4] 노포 음식 업종 분류 ─────────────────────────
+# 검증 노포(open_year 있음)를 CSV의 위생업태명 + 상호 키워드로 분류해 카드에 업종을 표시한다.
+# 라벨은 extra 배열의 'food:한식 · 고기·구이' 항목으로 저장한다(스키마 변경 없음). 프론트가 이 접두사를 읽는다.
+FOOD_PREFIX = "food:"
+
+KW_CHINESE = ("반점", "중화", "중국", "짜장", "짬뽕", "마라", "양꼬치", "탕수육", "딤섬", "훠궈", "사천", "차이나")
+KW_JAPANESE = ("초밥", "스시", "사시미", "오마카세", "이자카야", "돈까스", "돈카츠", "우동", "라멘", "소바", "가츠", "일식")
+KW_FISH_RAW = ("횟집", "활어", "물회", "생선회", "횟")
+KW_SNACK = ("분식", "떡볶이", "김밥", "라볶이", "어묵", "토스트")
+KW_WESTERN = ("파스타", "피자", "스테이크", "함박", "브런치", "버거", "양식", "경양식")
+KW_CHICKEN = ("치킨", "통닭", "닭강정", "닭집", "후라이드")
+KW_PUB = ("포차", "호프", "주점", "술집", "노가리", "막걸리", "빈대떡", "전집", "맥주", "선술", "포장마차")
+KOREAN_SUBS: list[tuple[str, tuple[str, ...]]] = [
+    ("국밥·해장", ("국밥", "순대국", "순댓국", "해장", "설렁탕", "곰탕", "육개장", "갈비탕", "추어탕", "감자탕", "뼈해장", "탕반")),
+    ("면·칼국수", ("칼국수", "국수", "냉면", "막국수", "수제비", "국시", "밀면", "면옥", "칼제비", "소면")),
+    ("고기·구이", ("고기", "구이", "갈비", "삼겹", "곱창", "막창", "대창", "불고기", "숯불", "주물럭", "한우", "돼지", "소고기",
+               "오리", "닭갈비", "생고기", "항정", "목살", "차돌", "꼼장어", "정육", "육회", "화로", "불고")),
+    ("족발·보쌈", ("족발", "보쌈")),
+    ("해물·생선", ("아구", "해물", "낙지", "쭈꾸미", "주꾸미", "꽃게", "조개", "생선", "코다리", "복국", "장어", "해산", "대구", "오징어", "전복")),
+    ("백반·찌개", ("백반", "찌개", "한정식", "정식", "비빔밥", "기사식당", "두부", "쌈밥", "보리밥", "밥집", "부대", "청국장", "된장", "제육")),
+]
+# 위생업태명 → (대분류, 소분류)
+UPTE_MAP: dict[str, tuple[str, str | None]] = {
+    "한식": ("한식", None),
+    "중국식": ("중식", None),
+    "일식": ("일식", None),
+    "분식": ("분식", None),
+    "김밥(도시락)": ("분식", None),
+    "경양식": ("양식", None),
+    "외국음식전문점(인도,태국등)": ("외국음식", None),
+    "식육(숯불구이)": ("한식", "고기·구이"),
+    "탕류(보신용)": ("한식", "국밥·해장"),
+    "냉면집": ("한식", "면·칼국수"),
+    "횟집": ("일식", "횟집"),
+    "호프/통닭": ("호프·노포포차", None),
+    "감성주점": ("호프·노포포차", None),
+    "정종/대포집/소주방": ("호프·노포포차", None),
+    "단란주점": ("호프·노포포차", None),
+    "유흥주점": ("호프·노포포차", None),
+    "통닭(치킨)": ("치킨·통닭", None),
+    "복어취급": ("일식", "횟집"),
+}
+
+
+def _has(n: str, kws: tuple[str, ...]) -> bool:
+    return any(k in n for k in kws)
+
+
+def classify_food(name: str, upte: str | None) -> tuple[str, str | None]:
+    """(대분류, 소분류). 상호 키워드가 우선이고, 없으면 위생업태명으로 정한다. 모르면 ('음식점', None)."""
+    n = re.sub(r"\s+", "", name or "")
+    up = (upte or "").strip()
+    if up in ("중국식",) or _has(n, KW_CHINESE):
+        return ("중식", None)
+    if _has(n, ("이자카야",)):
+        return ("일식", "이자카야")
+    if up == "일식" or _has(n, KW_JAPANESE):
+        if _has(n, KW_FISH_RAW):
+            return ("일식", "횟집")
+        if _has(n, ("초밥", "스시", "오마카세")):
+            return ("일식", "초밥")
+        if _has(n, ("돈까스", "돈카츠", "우동", "라멘", "소바", "가츠")):
+            return ("일식", "돈카츠·우동")
+        return ("일식", None)
+    if _has(n, KW_FISH_RAW) and up in ("", "한식", "횟집", "기타"):
+        return ("일식", "횟집")
+    # 국밥류는 '순대'가 들어가도 분식이 아니므로 분식보다 먼저 본다
+    if _has(n, KOREAN_SUBS[0][1]):
+        return ("한식", "국밥·해장")
+    if up in ("분식", "김밥(도시락)") or _has(n, KW_SNACK):
+        return ("분식", None)
+    if up in ("경양식",) or _has(n, KW_WESTERN):
+        return ("양식", None)
+    if _has(n, KW_CHICKEN):
+        return ("치킨·통닭", None)
+    if _has(n, KW_PUB) or up in ("호프/통닭", "감성주점", "단란주점", "유흥주점", "정종/대포집/소주방"):
+        return ("호프·노포포차", None)
+    for sub, kws in KOREAN_SUBS:
+        if _has(n, kws):
+            return ("한식", sub)
+    if up in UPTE_MAP:
+        return UPTE_MAP[up]
+    return ("음식점", None)
+
+
+def food_label(group: str, sub: str | None) -> str | None:
+    if group == "음식점":
+        return None  # 분류 근거가 없으면 표시하지 않는다
+    return f"{group} · {sub}" if sub else group
+
+
+def food_tag(group: str, sub: str | None) -> str | None:
+    if group == "음식점":
+        return None
+    return f"#{sub or group}"
+
+
+def food_phrase(group: str, sub: str | None) -> str:
+    if sub:
+        return f"{group}({sub}) 전문점이에요"
+    return {
+        "한식": "한식당이에요",
+        "중식": "중식당이에요",
+        "일식": "일식당이에요",
+        "분식": "분식점이에요",
+        "양식": "양식당이에요",
+        "외국음식": "외국 음식점이에요",
+        "치킨·통닭": "치킨·통닭 전문점이에요",
+        "호프·노포포차": "호프·노포포차예요",
+    }.get(group, "음식점이에요")
+
+
+TAG_PRIORITY = ["#현지인단골", "#노포감성", "#광고적음"]
+DROP_TAG = re.compile(r"^#(업력\d+년|노포|후기확인)$")
+
+
+def rebuild_tags(old: list[str], tag: str | None, label: str | None) -> list[str]:
+    """업종 태그를 맨 앞에 두고, 연차(#업력N년)·#노포 같은 뱃지와 겹치는 태그는 뺀다. 최대 3개."""
+    rest = [t for t in old if not DROP_TAG.match(t) and t != tag]
+    if label:
+        # 업종 라벨과 의미가 겹치는 태그 제거 (예: 라벨 '한식 · 고기·구이' ↔ 카카오 분류 태그 '#육류고기', '#한식')
+        tokens = [w for w in re.split(r"[\s·]+", label) if len(w) >= 2]
+        rest = [t for t in rest if not any(w in t[1:] for w in tokens) and t[1:] not in label]
+    ordered = [t for t in TAG_PRIORITY if t in rest] + [t for t in rest if t not in TAG_PRIORITY and t != "#후기적음"]
+    ordered += [t for t in rest if t == "#후기적음"]
+    ordered = list(dict.fromkeys(ordered))
+    return ([tag] if tag else []) + ordered[: 3 - (1 if tag else 0)]
+
+
+def load_for_classify(names: set[str], keys: set[str]) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """CSV 스트리밍: 상호명 또는 주소 키가 DB와 겹치는 영업 행만 적재(업태 포함)."""
+    enc = detect_encoding(RESTAURANT_CSV)
+    by_name: dict[str, list[dict]] = defaultdict(list)
+    by_addr: dict[str, list[dict]] = defaultdict(list)
+    limit_year = TODAY_YEAR - MIN_AGE
+    with RESTAURANT_CSV.open(encoding=enc, newline="") as f:
+        r = csv.reader(f)
+        h = next(r)
+        i_name, i_date, i_state = h.index("사업장명"), h.index("인허가일자"), h.index("영업상태명")
+        i_road, i_jibun = h.index("도로명주소"), h.index("지번주소")
+        i_upte, i_alt = h.index("위생업태명"), h.index("업태구분명")
+        for row in r:
+            if len(row) <= i_jibun or not row[i_state].startswith("영업"):
+                continue
+            m = re.match(r"(\d{4})", row[i_date])
+            if not m or int(m.group(1)) > limit_year:
+                continue
+            road, jibun = row[i_road], row[i_jibun]
+            if not any(k in road or k in jibun for k in REGIONS):
+                continue
+            key = norm_name(row[i_name])
+            ks = (addr_keys(road) | addr_keys(jibun)) & keys
+            if key not in names and not ks:
+                continue
+            rec = {
+                "name": row[i_name],
+                "year": int(m.group(1)),
+                "upte": (row[i_upte] or row[i_alt]).strip(),
+                "district": finest_district(road or jibun),
+            }
+            if key in names:
+                by_name[key].append(rec)
+            for k in ks:
+                by_addr[k].append(rec)
+    return by_name, by_addr
+
+
+def classify_nopo(client, dry: bool) -> None:
+    rows = fetch_all(client, {"mode": "nopo"}, "id,name,address,open_year,tags,extra,summary")
+    rows = [r for r in rows if r["open_year"] is not None]
+    print(f"[분류] 검증 노포 {len(rows)}건 업종 분류 시작")
+    names = {norm_name(r["name"]) for r in rows}
+    keys: set[str] = set()
+    for r in rows:
+        keys |= addr_keys(r["address"] or "")
+    by_name, by_addr = load_for_classify(names, keys)
+
+    results: list[tuple[dict, str | None, str | None, str]] = []
+    stats = Counter()
+    labels = Counter()
+    upte_seen = Counter()
+    unknown: list[str] = []
+    for r in rows:
+        dist = finest_district(r["address"] or "")
+        cands: list[dict] = [c for c in by_name.get(norm_name(r["name"]), []) if c["district"] == dist]
+        for k in addr_keys(r["address"] or ""):
+            for c in by_addr.get(k, []):
+                if c not in cands and names_match(r["name"], c["name"]):
+                    cands.append(c)
+        same_year = [c for c in cands if c["year"] == r["open_year"]]
+        pick = (same_year or cands or [None])[0]
+        upte = pick["upte"] if pick else None
+        stats["CSV 업태 확인" if pick else "상호 키워드만"] += 1
+        upte_seen[upte or "(없음)"] += 1
+        group, sub = classify_food(r["name"], upte)
+        if (group, sub) in (("한식", None), ("음식점", None)):
+            hint = f'{r["name"]} {r["summary"] or ""} {" ".join(r["tags"] or [])}'
+            g2, s2 = classify_food(hint, upte)
+            if g2 == group or group == "음식점":
+                if (g2, s2) != ("음식점", None):
+                    group, sub = g2, s2
+        label, tag = food_label(group, sub), food_tag(group, sub)
+        if label is None and len(unknown) < 12:
+            unknown.append(f"{r['name']} [{upte}]")
+        labels[label or "(분류 불가)"] += 1
+        results.append((r, label, tag, f"{r['open_year']}년 개업 · {food_phrase(group, sub)}."))
+
+    print(f"[분류] {dict(stats)}")
+    print("   위생업태명 분포:", dict(upte_seen.most_common(12)))
+    print("   라벨 분포:", dict(labels.most_common(25)))
+    print("   분류 불가 예:", unknown)
+    for r, label, tag, summary in results[:6]:
+        print(f"   ✓ {r['name']}: {label} | {rebuild_tags(r['tags'] or [], tag, label)} | {summary}")
+    if dry:
+        print("dry-run: DB 변경 없음")
+        return
+    for n, (r, label, tag, summary) in enumerate(results, 1):
+        extra = [e for e in (r["extra"] or []) if not e.startswith(FOOD_PREFIX)]
+        if label:
+            extra.append(f"{FOOD_PREFIX}{label}")
+        client.table("bml_places").update(
+            {"tags": rebuild_tags(r["tags"] or [], tag, label), "summary": summary, "extra": extra}
+        ).eq("id", r["id"]).execute()
+        if n % 100 == 0:
+            print(f"  update {n}/{len(results)}")
+    print(f"[분류] DB 반영 완료: {len(results)}건")
+
+
 # ───────────────────────── 메인 ─────────────────────────
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -690,18 +920,26 @@ def main() -> int:
     ap.add_argument("--skip-parking", action="store_true")
     ap.add_argument("--no-blog", action="store_true", help="블로그 검색 생략")
     ap.add_argument("--pass2", action="store_true", help="2차: open_year가 빈 노포를 주소 일치+유사 상호명으로 추가 매칭")
+    ap.add_argument("--classify", action="store_true", help="검증 노포의 음식 업종 분류 + 태그/요약 정리 (연차 문구 중복 제거)")
     args = ap.parse_args()
 
     from supabase import create_client
 
     client = create_client(SUPABASE_URL, SERVICE_KEY)
+    if args.classify:
+        classify_nopo(client, args.dry_run)
+        return 0
     if args.pass2:
         second_pass(client, args.dry_run, not args.no_blog)
+        if not args.dry_run:
+            classify_nopo(client, False)  # 새로 확정된 노포도 같은 형식(업종 태그·간결 요약)으로 맞춘다
         return 0
     if not args.skip_parking:
         enrich_parking(client, args.dry_run)
     if not args.skip_nopo:
         enrich_nopo(client, args.dry_run, not args.no_blog)
+        if not args.dry_run:
+            classify_nopo(client, False)
     return 0
 
 
