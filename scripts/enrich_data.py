@@ -288,6 +288,63 @@ def hhmm(s: str) -> str:
     return (s or "").strip()[:5]
 
 
+FEE_PREFIX = "fee:"
+FREE_WORDS = re.compile(r"(평일|주말|토요일|일요일|공휴일|야간|주중|\d{1,2}시|최초)")
+
+
+def fmt_minutes(t: int) -> str:
+    """분 → 사람이 읽는 시간 (30분, 1시간, 1시간 30분)."""
+    if t < 60:
+        return f"{t}분"
+    h, m = divmod(t, 60)
+    return f"{h}시간" if m == 0 else f"{h}시간 {m}분"
+
+
+def pricing_text(c: dict) -> str | None:
+    """핵심 요금 한 줄. 예: '최초 30분 600원 · 10분당 300원', '최초 30분 무료 · 10분당 300원', '무료'."""
+    if (c["요금정보"] or "").strip() == "무료":
+        return "무료"
+    base_t, base_f = to_int(c["주차기본시간"]), to_int(c["주차기본요금"])
+    unit_t, unit_f = to_int(c["추가단위시간"]), to_int(c["추가단위요금"])
+    parts: list[str] = []
+    same_as_unit = bool(base_t and unit_t and base_t == unit_t and base_f == unit_f)  # '최초 5분 50원 · 5분당 50원' 중복 방지
+    if base_t and base_f is not None and not same_as_unit:
+        if base_f == 0:
+            if base_t >= 10:
+                parts.append(f"최초 {fmt_minutes(base_t)} 무료")
+        else:
+            parts.append(f"최초 {fmt_minutes(base_t)} {base_f:,}원")
+    if unit_t and unit_f:
+        parts.append(f"{'1시간' if unit_t == 60 else f'{unit_t}분'}당 {unit_f:,}원")
+    return " · ".join(parts) or None
+
+
+def free_text(note: str | None) -> str | None:
+    """특기사항에서 무료 개방 정보만 추출. 예: '주말·공휴일 무료'. 조건부 혜택(할인권 등)은 제외."""
+    if not note or "무료" not in note:
+        return None
+    segs: list[str] = []
+    pending: list[str] = []
+    for tok in re.split(r"\+", note):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if "무료" in tok:
+            seg = "·".join(pending + [tok]) if pending else tok
+            seg = re.sub(r"\s*및\s*", "·", seg)
+            seg = re.sub(r"(개방|운영|실시)", "", seg)
+            seg = re.sub(r"\s+", " ", seg).strip()
+            if FREE_WORDS.search(seg) and not re.search(r"(할인권|이용\s*시|영화관|도서관|상가)", seg) and len(seg) <= 24:
+                segs.append(seg)
+            pending = []
+        elif re.fullmatch(r"(평일|주중|주말|토요일|일요일|공휴일|야간)", tok):
+            pending.append(tok)
+        else:
+            pending = []
+    uniq = list(dict.fromkeys(segs))[:2]
+    return " · ".join(uniq) or None
+
+
 def parking_spec(c: dict) -> dict:
     """CSV 행 → 태그 3개 + 요약."""
     fee_info = (c["요금정보"] or "").strip()
@@ -321,11 +378,17 @@ def parking_spec(c: dict) -> dict:
     free_base = (base_f == 0 and (base_t or 0) >= 10 and fee_info != "무료")
     third = "#기본무료" if free_base else None
 
-    summary = f"{fee_txt}, {hours_txt}."
+    pricing = pricing_text(c)
+    free = None if pricing == "무료" else free_text(c.get("특기사항"))
+    # 카드에 강조해 보여줄 요금 한 줄 + 무료 개방 정보 (extra 의 'fee:' 항목)
+    fee_entries = [e for e in (pricing, free) if e]
+    fee_for_summary = pricing or fee_txt
+    summary = f"{fee_for_summary}{' · ' + free if free else ''}, {hours_txt}."
     if day_f:
         summary += f" 하루권 {day_f:,}원."
     return {"fee_tag": fee_tag, "hours_tag": hours_tag, "third": third,
-            "type": (c["주차장유형"] or "").strip(), "summary": summary}
+            "type": (c["주차장유형"] or "").strip(), "summary": summary,
+            "hours_txt": hours_txt, "fee_entries": fee_entries, "has_fee": fee_tag != "#요금현장확인"}
 
 
 def load_parking() -> list[dict]:
@@ -423,7 +486,7 @@ def enrich_parking(client, dry: bool) -> None:
         grid[(int(c["lat"] * 200), int(c["lng"] * 200))].append(c)
 
     stats = region_fee_stats(lots)
-    rows = fetch_all(client, {"category": "parking"}, "id,name,address,lat,lng,tags,summary,badge")
+    rows = fetch_all(client, {"category": "parking"}, "id,name,address,lat,lng,tags,summary,badge,extra")
     print(f"[주차장] DB {len(rows)}건")
     updates: list[tuple[str, dict]] = []
     matched = municipal = 0
@@ -449,6 +512,7 @@ def enrich_parking(client, dry: bool) -> None:
                 best = c
 
         tags, summary, hours_txt = list(r["tags"]), r["summary"], None
+        extra = [e for e in (r["extra"] or []) if not e.startswith(FEE_PREFIX)]
         if best:
             spec = parking_spec(best)
             cur_special = next((t for t in r["tags"] if t in SPECIAL), None)
@@ -456,7 +520,9 @@ def enrich_parking(client, dry: bool) -> None:
             tags = list(dict.fromkeys([spec["fee_tag"], spec["hours_tag"], third]))
             while len(tags) < 3:
                 tags.append("#공영주차장")
-            summary, hours_txt = spec["summary"], spec["summary"].split(", ", 1)[-1].rstrip(".")
+            summary, hours_txt = spec["summary"], spec["hours_txt"]
+            if spec["has_fee"]:
+                extra += [FEE_PREFIX + e for e in spec["fee_entries"]]
             matched += 1
 
         # 요금이 끝내 비어 있는 '공영' 주차장 → 지자체 공영 태그 + 지자체 단위 안내
@@ -467,8 +533,11 @@ def enrich_parking(client, dry: bool) -> None:
             municipal += 1
         elif not best:
             continue
-        updates.append((r["id"], {"tags": tags[:3], "summary": summary}))
+        updates.append((r["id"], {"tags": tags[:3], "summary": summary, "extra": extra}))
 
+    fee_rows = sum(any(e.startswith(FEE_PREFIX) for e in u["extra"]) for _, u in updates)
+    free_rows = sum(any(e.startswith(FEE_PREFIX) and "무료" in e and e != FEE_PREFIX + "무료" for e in u["extra"]) for _, u in updates)
+    print(f"[주차장] 요금 정보(fee:) 부여 {fee_rows}건 (무료 개방 정보 포함 {free_rows}건)")
     print(f"[주차장] CSV 매칭 {matched}건, 지자체공영 안내 {municipal}건 → 갱신 {len(updates)}건 / 그대로 {len(rows) - len(updates)}건")
     for rid, u in updates[:6]:
         nm = next(x["name"] for x in rows if x["id"] == rid)

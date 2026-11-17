@@ -23,6 +23,7 @@ import {
   FILTERS,
   ageTier,
   distanceM,
+  feeEntries,
   feedbackCount,
   fieldInfo,
   foodLabel,
@@ -437,6 +438,7 @@ function PlaceCard({
   const dist = Math.round(place.distance_m);
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
+  const fees = place.category === "parking" ? feeEntries(place) : []; // 주차 요금·무료 개방
   const fav = !!useFavorites()[place.id];
   const info = fieldInfo(place);
   const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime || !!info.tip;
@@ -476,6 +478,21 @@ function PlaceCard({
           · {dist >= 1000 ? `${(dist / 1000).toFixed(1)}km` : `${dist}m`}
         </span>
       </p>
+
+      {fees.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="주차 요금">
+          {fees.map((f) => (
+            <li
+              key={f.text}
+              className={`rounded-lg px-2.5 py-1 text-label font-bold ${
+                f.free ? "border border-success text-success" : "bg-accent text-on-accent"
+              }`}
+            >
+              {f.free ? (f.text === "무료" ? "무료 주차장" : f.text) : `요금 ${f.text}`}
+            </li>
+          ))}
+        </ul>
+      )}
 
       <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="핵심 스펙">
         {place.tags.slice(0, 3).map((t) => (
@@ -744,6 +761,16 @@ export default function Home() {
     setSelectedId(null);
   };
 
+  // 지도 이동 후 '이 지역 다시 찾기': 현재 지도 중심을 새 조회 기준으로 삼아 목록·핀을 다시 불러온다
+  const searchHere = (c: { lat: number; lng: number }) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      showToast("오프라인 상태에서는 새로운 지역을 조회할 수 없어요.");
+      return;
+    }
+    setSelectedId(null);
+    setLoc({ kind: "search", name: "지도에서 고른 위치", lat: c.lat, lng: c.lng });
+  };
+
   const changeView = (v: View) => {
     setView(v);
     setSelectedId(null);
@@ -942,6 +969,7 @@ export default function Home() {
             selectedId={selected?.id ?? null}
             onSelect={setSelectedId}
             onFallback={() => changeView("list")}
+            onSearchHere={searchHere}
           >
             {selected && (
               <PlaceCard

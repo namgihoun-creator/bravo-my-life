@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MapPinOff, X } from "lucide-react";
+import { MapPinOff, RefreshCw, X } from "lucide-react";
 import {
   loadKakaoMaps,
   mapErrorMessage,
@@ -11,7 +11,7 @@ import {
   type KMarker,
   type KOverlay,
 } from "@/lib/kakaoMaps";
-import type { Mode, Place } from "@/data/places";
+import { distanceM, type Mode, type Place } from "@/data/places";
 
 interface Props {
   mode: Mode;
@@ -21,11 +21,15 @@ interface Props {
   onSelect: (id: string | null) => void;
   /** 지도를 쓸 수 없을 때 목록으로 돌아가는 버튼 */
   onFallback: () => void;
+  /** '이 지역 다시 찾기': 현재 지도 중심 좌표로 다시 조회 */
+  onSearchHere: (center: { lat: number; lng: number }) => void;
   /** 선택된 장소의 상세 카드 (지도 하단에 오버레이) */
   children?: React.ReactNode;
 }
 
 type Status = "loading" | "ready" | "error";
+
+const SEARCH_HERE_M = 500;
 
 /**
  * 모드별 핀/클러스터 색 (DESIGN.md 토큰과 같은 값).
@@ -99,6 +103,7 @@ export default function PlaceMap({
   selectedId,
   onSelect,
   onFallback,
+  onSearchHere,
   children,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,6 +116,7 @@ export default function PlaceMap({
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null); // 사용자가 드래그해 옮긴 지도 중심
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -128,6 +134,11 @@ export default function PlaceMap({
           level: 5,
         });
         kakao.event.addListener(map, "click", () => onSelectRef.current(null)); // 지도 빈 곳 클릭 → 닫기
+        // 드래그가 끝나면 지도 중심을 기억해, 조회 기준에서 500m 넘게 벗어났는지 계산한다
+        kakao.event.addListener(map, "dragend", () => {
+          const c = map.getCenter();
+          setMapCenter({ lat: c.getLat(), lng: c.getLng() });
+        });
         mapRef.current = map;
         setStatus("ready");
       })
@@ -254,6 +265,10 @@ export default function PlaceMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, status]);
 
+  // 조회 기준 위치에서 500m 이상 벗어나면 '이 지역 다시 찾기' 노출 (기준 위치가 바뀌면 자동으로 다시 계산)
+  const movedFar =
+    status === "ready" && mapCenter !== null && distanceM(center.lat, center.lng, mapCenter.lat, mapCenter.lng) >= SEARCH_HERE_M;
+
   // Esc 로 상세 카드 닫기
   useEffect(() => {
     if (!selectedId) return;
@@ -299,8 +314,19 @@ export default function PlaceMap({
         </div>
       )}
 
+      {movedFar && mapCenter && (
+        <button
+          type="button"
+          onClick={() => onSearchHere(mapCenter)}
+          className="theme-t absolute left-1/2 top-3 z-20 flex min-h-[44px] -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border-2 border-surface bg-primary px-4 text-label font-bold text-on-primary shadow-sticky active:opacity-90"
+        >
+          <RefreshCw size={16} aria-hidden />
+          이 지역 다시 찾기
+        </button>
+      )}
+
       {status === "ready" && places.length === 0 && (
-        <p className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit rounded-full bg-surface px-3 py-1.5 text-caption font-semibold text-muted shadow-card">
+        <p className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-surface px-3 py-1.5 text-caption font-semibold text-muted shadow-card">
           이 조건에 맞는 장소가 반경 2km 안에 없어요
         </p>
       )}

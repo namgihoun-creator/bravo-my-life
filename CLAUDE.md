@@ -45,3 +45,6 @@
 - **노포 업종·중복 문구:** `python scripts/enrich_data.py --classify`가 검증 노포를 위생업태명+상호 키워드로 분류해 `extra`의 `food:한식 · 고기·구이`, 업종 태그(맨 앞), 요약(`2011년 개업 · 한식(고기·구이) 전문점이에요.`)을 갱신한다(`#업력N년`·`#노포`·"N년째 영업 중" 금지: 업력 뱃지와 중복). `--pass2`/기본 실행 끝에서도 자동 호출된다.
 - **찜·공유:** 찜은 `localStorage bml_favorites`(장소 스냅샷, 오프라인 가능, `src/lib/favorites.ts`), 공유는 `src/lib/share.ts`(`navigator.share` → 클립보드 폴백, 취소는 무시).
 - **현장 팁(`bml_add_place_tip`):** 정기휴무·영업시간·브레이크타임·한 줄 팁은 `feedback` JSONB에 병합 저장한다(`closed_days`/`hours`/`break_time`/`tips`; 이 키는 칩 카운트 RPC가 건드릴 수 없게 예약). `src/lib/openStatus.ts`는 현장 정보를 요약 추정보다 우선해 판별한다. 두 기기 공유는 Realtime(`UPDATE`) + 30초 이상 비활성 후 복귀 시 조용한 새로고침. `supabase/migrations/004_field_tips.sql`을 SQL Editor에서 실행해야 동작한다.
+- **지도 재조회:** 지도 뷰에서 드래그로 조회 기준에서 500m 이상 벗어나면 `이 지역 다시 찾기` 버튼(44px, 상단 중앙)을 띄우고, 누르면 `map.getCenter()` 기준으로 다시 조회한다(`PlaceMap.onSearchHere` → Home `searchHere`). 오프라인이면 조회하지 않고 토스트만 띄운다.
+- **거점 36곳:** `scripts/collect_data.py`의 `HUBS`(수도권 구도심·생활권 포함)와 `src/data/places.ts`의 `HUBS`를 같이 늘린다. 새 거점 수집 후 순서: `collect_data.py --hubs …` → `enrich_nopo.py --stage1-only` → `enrich_data.py`(주차장 요금·노포 1차·업종 분류) → `enrich_data.py --pass2`.
+- **주차장 요금(`fee:`):** `enrich_data.py`가 공공데이터 주차장 CSV에서 요금 체계와 특기사항의 무료 개방 정보를 파싱해 `extra`의 `fee:` 항목과 `summary`에 넣는다(`fee:최초 30분 600원 · 10분당 300원`, `fee:일요일·공휴일 무료`). 데이터가 없으면 만들지 않는다.

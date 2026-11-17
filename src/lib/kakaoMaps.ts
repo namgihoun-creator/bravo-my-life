@@ -19,6 +19,7 @@ export interface KMap {
   setLevel(level: number): void;
   setBounds(b: KBounds, top?: number, right?: number, bottom?: number, left?: number): void;
   getBounds(): KBounds;
+  getCenter(): KLatLng;
   relayout(): void;
 }
 export interface KOverlay {

@@ -105,7 +105,7 @@ export const FEEDBACK_CHIPS: Record<string, FeedbackChipDef[]> = {
   general: NOPO_CHIPS,
 };
 
-/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 18곳) */
+/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 36곳) */
 export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "홍대입구역", lat: 37.5572, lng: 126.9245 },
   { name: "성수역", lat: 37.5446, lng: 127.056 },
@@ -125,6 +125,24 @@ export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "신촌역", lat: 37.5551, lng: 126.9368 },
   { name: "서현역", lat: 37.3846, lng: 127.1231 },
   { name: "부평역", lat: 37.4896, lng: 126.7243 },
+  { name: "을지로3가역", lat: 37.5663, lng: 126.991 },
+  { name: "종로3가역", lat: 37.5704, lng: 126.9922 },
+  { name: "공덕역", lat: 37.5445, lng: 126.9515 },
+  { name: "문래역", lat: 37.518, lng: 126.8948 },
+  { name: "삼각지역", lat: 37.5344, lng: 126.9729 },
+  { name: "왕십리역", lat: 37.5613, lng: 127.0371 },
+  { name: "천호역", lat: 37.5385, lng: 127.1239 },
+  { name: "연신내역", lat: 37.6192, lng: 126.9211 },
+  { name: "노원역", lat: 37.6563, lng: 127.0634 },
+  { name: "구리역", lat: 37.6033, lng: 127.1434 },
+  { name: "의정부역", lat: 37.7384, lng: 127.046 },
+  { name: "화정역", lat: 37.6346, lng: 126.8327 },
+  { name: "중앙역(안산)", lat: 37.316, lng: 126.8388 },
+  { name: "범계역", lat: 37.3898, lng: 126.9508 },
+  { name: "모란역", lat: 37.434, lng: 127.13 },
+  { name: "수지구청역", lat: 37.3225, lng: 127.0947 },
+  { name: "철산역", lat: 37.4762, lng: 126.8682 },
+  { name: "정왕역", lat: 37.3517, lng: 126.7434 },
 ];
 
 export const FALLBACK_LOCATION = { name: "부천역 인근", lat: 37.4844, lng: 126.783 };
@@ -278,4 +296,23 @@ export function timeAgo(iso: string, nowMs: number): string {
   if (h < 24) return `${h}시간 전`;
   const d = Math.round(h / 24);
   return d < 30 ? `${d}일 전` : `${Math.round(d / 30)}개월 전`;
+}
+
+/* ───────────── 공영주차장 요금 ───────────── */
+
+export interface FeeEntry {
+  text: string;
+  /** true: 무료 개방(주말·공휴일 무료 등) / false: 요금 체계 */
+  free: boolean;
+}
+
+const FREE_WINDOW = /(평일|주말|토요일|일요일|공휴일|야간|주중)/;
+
+/** extra 의 'fee:' 항목 → 카드 강조용 요금/무료 개방 정보 (요금 체계가 먼저) */
+export function feeEntries(p: Place): FeeEntry[] {
+  return (p.extra ?? [])
+    .filter((e) => e.startsWith("fee:"))
+    .map((e) => e.slice(4))
+    .map((text) => ({ text, free: text === "무료" || FREE_WINDOW.test(text) }))
+    .sort((a, b) => Number(a.free) - Number(b.free));
 }
