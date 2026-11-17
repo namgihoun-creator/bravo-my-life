@@ -16,7 +16,9 @@
 [2] 공영주차장 (category='parking')
     - 서울·경기 '공영' 주차장 CSV와 좌표(+이름 유사도)로 매칭해 요금·운영시간 태그/요약 갱신
 
-사용법:  python scripts/enrich_data.py [--dry-run] [--skip-nopo] [--skip-parking] [--no-blog]
+[3] 2차 매칭 (--pass2): open_year가 빈 노포를 '정규화 주소 정확 일치 + 인허가 10년 이상 + 상호 핵심명 일치'로 추가 확정
+
+사용법:  python scripts/enrich_data.py [--dry-run] [--skip-nopo] [--skip-parking] [--no-blog] [--pass2]
 """
 
 from __future__ import annotations
@@ -479,6 +481,207 @@ def enrich_parking(client, dry: bool) -> None:
     print(f"[주차장] 갱신 {len(updates)}건 완료")
 
 
+# ───────────────────────── [3] 2차 주소·유사 상호명 매칭 ─────────────────────────
+# 1차(상호명 정확 일치)에서 못 찾은 노포 후보 중, '주소가 정확히 같고' 상호 핵심명이 맞는 인허가 행을 찾는다.
+JIBUN_RE = re.compile(r"([가-힣0-9]+(?:동|가|리))\s+(\d+(?:-\d+)?)")
+GENERIC = {
+    "식당", "국밥", "분식", "치킨", "호프", "주점", "포차", "한식", "중국집", "횟집", "고기", "갈비", "김밥",
+    "순대", "족발", "보쌈", "곱창", "막창", "술집", "맥주", "이자카야", "파스타", "시장", "마을", "맛집",
+    "명가", "가든", "본가", "할머니", "할아버지", "우리", "대박", "형제", "엄마", "아빠", "이모", "삼촌",
+    "해장국", "칼국수", "냉면", "찌개", "백반", "닭갈비", "삼겹살", "부대찌개", "감자탕", "설렁탕",
+}
+
+
+def addr_keys(addr: str) -> set[str]:
+    """층·호수를 뺀 정규화 주소 키: (구, 도로명, 본번-부번) 또는 (구, 동, 지번)."""
+    addr = re.sub(r"\(.*?\)", " ", addr or "")
+    dist = finest_district(addr)
+    keys: set[str] = set()
+    if not dist:
+        return keys
+    m = ROAD_RE.search(addr)
+    if m:
+        keys.add(f"R|{dist}|{m.group(1)}|{m.group(2)}")
+    m = JIBUN_RE.search(addr)
+    if m:
+        keys.add(f"J|{dist}|{m.group(1)}|{m.group(2)}")
+    return keys
+
+
+def core_name(s: str) -> str:
+    s = re.sub(r"\(주\)|㈜|주식회사", "", s or "")
+    s = re.sub(r"\(.*?\)", "", s)
+    for w in ("본점", "별관", "원조", "전통"):
+        s = s.replace(w, "")
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", s)
+
+
+def longest_common(a: str, b: str) -> str:
+    best = ""
+    for i in range(len(a)):
+        for j in range(i + 2, len(a) + 1):
+            sub = a[i:j]
+            if len(sub) > len(best) and sub in b:
+                best = sub
+    return best
+
+
+def strip_branch(raw: str) -> str:
+    """마지막 공백 토큰이 '○○점'이면(지점명) 제거. 예: '신의주찹쌀순대 신촌점' → '신의주찹쌀순대'."""
+    parts = re.sub(r"\(.*?\)", " ", raw or "").split()
+    if len(parts) > 1 and parts[-1].endswith("점") and len(parts[-1]) <= 8:
+        parts = parts[:-1]
+    return " ".join(parts)
+
+
+def names_match(kakao_name: str, csv_name: str) -> bool:
+    """핵심 상호명 일치. 지점명·(주)·본점·원조·전통·공백·특수문자를 뺀 뒤,
+    ① 완전 일치, ② 3글자 이상 포함 관계, ③ 3글자 이상 연속 일치 + 유사도 0.7 이상.
+    (2글자 이하만 겹치는 경우는 같은 건물의 다른 가게일 가능성이 커서 인정하지 않는다)"""
+    a, b = core_name(strip_branch(kakao_name)), core_name(strip_branch(csv_name))
+    if len(a) < 2 or len(b) < 2:
+        return False
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) >= 3 and short in long_ and short not in GENERIC:
+        return True
+    common = longest_common(a, b)
+    return (
+        len(common) >= 3
+        and common not in GENERIC
+        and not common.isdigit()
+        and SequenceMatcher(None, a, b).ratio() >= 0.7
+    )
+
+
+def is_cafe_like(*texts: str) -> bool:
+    return any(w in (t or "") for t in texts for w in blog.CAFE_DESSERT)
+
+
+def load_by_address(keys: set[str]) -> dict[str, list[dict]]:
+    """CSV를 스트리밍하며 '영업 + 인허가 MIN_AGE년 이상 + 주소 키가 DB와 일치'하는 행만 적재."""
+    enc = detect_encoding(RESTAURANT_CSV)
+    limit_year = TODAY_YEAR - MIN_AGE
+    out: dict[str, list[dict]] = defaultdict(list)
+    n = kept = 0
+    t0 = time.time()
+    with RESTAURANT_CSV.open(encoding=enc, newline="") as f:
+        r = csv.reader(f)
+        h = next(r)
+        i_name, i_date, i_state = h.index("사업장명"), h.index("인허가일자"), h.index("영업상태명")
+        i_road, i_jibun, i_type = h.index("도로명주소"), h.index("지번주소"), h.index("업태구분명")
+        for row in r:
+            n += 1
+            if len(row) <= i_jibun or not row[i_state].startswith("영업"):
+                continue
+            m = re.match(r"(\d{4})", row[i_date])
+            if not m or int(m.group(1)) > limit_year:
+                continue
+            road, jibun = row[i_road], row[i_jibun]
+            if not any(k in road or k in jibun for k in REGIONS):
+                continue
+            ks = (addr_keys(road) | addr_keys(jibun)) & keys
+            if not ks:
+                continue
+            kept += 1
+            rec = {"year": int(m.group(1)), "name": row[i_name], "type": row[i_type], "state": row[i_state]}
+            for k in ks:
+                out[k].append(rec)
+    print(f"[2차 CSV] {n:,}행 스트리밍 → 주소 일치 {kept:,}건 ({time.time() - t0:.0f}s)")
+    return out
+
+
+def hub_counts(rows: list[dict]) -> Counter:
+    return Counter(blog.nearest_hub(r["lat"], r["lng"]) for r in rows)
+
+
+def second_pass(client, dry: bool, use_blog: bool) -> None:
+    rows = fetch_all(
+        client,
+        {"mode": "nopo"},
+        "id,kakao_id,name,address,lat,lng,category,extra,tags,badge,summary,open_year",
+    )
+    verified_before = [r for r in rows if r["open_year"] is not None]
+    todo = [r for r in rows if r["open_year"] is None and "#유저제보" not in (r["tags"] or [])]
+    print(f"[2차] 노포 {len(rows)}건 / 확정(open_year) {len(verified_before)} / 미확정 대상 {len(todo)}")
+
+    all_keys: set[str] = set()
+    row_keys: dict[str, set[str]] = {}
+    for r in todo:
+        ks = addr_keys(r["address"] or "")
+        row_keys[r["id"]] = ks
+        all_keys |= ks
+    idx = load_by_address(all_keys)
+
+    OUT.mkdir(exist_ok=True)
+    found: list[tuple[dict, int, str]] = []
+    skipped = Counter()
+    for r in todo:
+        cands: list[dict] = []
+        for k in row_keys[r["id"]]:
+            cands += idx.get(k, [])
+        if not cands:
+            skipped["주소 일치 없음"] += 1
+            continue
+        sub = r["tags"][0] if r["tags"] else ""
+        ok = [
+            c for c in cands
+            if names_match(r["name"], c["name"]) and not is_cafe_like(c["name"], c["type"], r["name"], sub)
+        ]
+        if not ok:
+            skipped["상호 불일치/카페·제과"] += 1
+            continue
+        best = min(ok, key=lambda c: c["year"])  # 같은 주소에 여럿이면 가장 오래된 인허가
+        found.append((r, best["year"], best["name"]))
+    print(f"[2차] 새로 확정 {len(found)}건 / 제외: {dict(skipped)}")
+
+    # 블로그 교차 검증 (광고 과다 제외 + 요약·태그)
+    analysis: dict[str, dict] = {}
+    if use_blog and found:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futs = {ex.submit(blog.analyze, r): r for r, _, _ in found}
+            for f in as_completed(futs):
+                analysis[futs[f]["id"]] = f.result()
+
+    updates: list[tuple[dict, dict, int]] = []
+    ad_drop: list[str] = []
+    for r, year, _csv_name in found:
+        age = TODAY_YEAR - year
+        a = analysis.get(r["id"])
+        if a and a["rel"] >= 3 and a["ad"] * 2 >= a["rel"]:
+            ad_drop.append(r["id"])
+            continue
+        extra = sorted(set(r["extra"] or []) | ({"veteran"} if age >= 20 else set()))
+        updates.append((r, {"badge": f"업력 {age}년", "extra": extra, **build_text(r, a, year, age)}, year))
+
+    # 리포트
+    tier = lambda a: "30년+" if a >= 30 else "20~29년" if a >= 20 else "15~19년" if a >= 15 else "10~14년"  # noqa: E731
+    print(f"[2차] 갱신 {len(updates)}건 (광고 과다 제외 {len(ad_drop)}건)")
+    print("   구간별:", dict(Counter(tier(TODAY_YEAR - y) for _, _, y in updates)))
+    for r, u, y in updates[:8]:
+        print(f"   ✓ {r['name']} ({r['address']}): 인허가 {y} → {u['badge']} {u['tags']}")
+    before_hub, add_hub = hub_counts(verified_before), hub_counts([r for r, _, _ in updates])
+    print(f"[결과] 확정 노포 {len(verified_before)} → {len(verified_before) + len(updates)} (+{len(updates)})")
+    print("   거점별 (이전 → 이후):")
+    for hub in sorted(set(before_hub) | set(add_hub), key=lambda h: -(before_hub[h] + add_hub[h])):
+        print(f"     {hub}: {before_hub[hub]} → {before_hub[hub] + add_hub[hub]} (+{add_hub[hub]})")
+
+    if dry:
+        print("dry-run: DB 변경 없음")
+        return
+    if ad_drop:
+        client.table("bml_places").delete().in_("id", ad_drop).execute()
+    years_map = json.loads(OPEN_YEARS_FILE.read_text(encoding="utf-8")) if OPEN_YEARS_FILE.exists() else {}
+    for n, (r, u, y) in enumerate(updates, 1):
+        client.table("bml_places").update({**u, "open_year": y}).eq("id", r["id"]).execute()
+        years_map[r["id"]] = y
+        if n % 100 == 0:
+            print(f"  update {n}/{len(updates)}")
+    OPEN_YEARS_FILE.write_text(json.dumps(years_map), encoding="utf-8")
+    print(f"[2차] DB 반영 완료: 갱신 {len(updates)}건")
+
+
 # ───────────────────────── 메인 ─────────────────────────
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -486,11 +689,15 @@ def main() -> int:
     ap.add_argument("--skip-nopo", action="store_true")
     ap.add_argument("--skip-parking", action="store_true")
     ap.add_argument("--no-blog", action="store_true", help="블로그 검색 생략")
+    ap.add_argument("--pass2", action="store_true", help="2차: open_year가 빈 노포를 주소 일치+유사 상호명으로 추가 매칭")
     args = ap.parse_args()
 
     from supabase import create_client
 
     client = create_client(SUPABASE_URL, SERVICE_KEY)
+    if args.pass2:
+        second_pass(client, args.dry_run, not args.no_blog)
+        return 0
     if not args.skip_parking:
         enrich_parking(client, args.dry_run)
     if not args.skip_nopo:
