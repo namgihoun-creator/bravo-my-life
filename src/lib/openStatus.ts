@@ -1,5 +1,7 @@
 import type { Place } from "@/data/places";
 
+const DAY_CHARS = ["월", "화", "수", "목", "금", "토", "일"] as const; // places.ts의 DAY_CHARS와 동일(순수 모듈로 유지)
+
 /**
  * '지금 영업 중 / 24시간' 판별 (Asia/Seoul 기준).
  *
@@ -11,6 +13,8 @@ import type { Place } from "@/data/places";
 export interface OpenState {
   status: boolean | null;
   label: "24시간 운영 중" | "영업 중" | null;
+  /** 영업 중이 아닐 때의 사유 (현장 정보 기준): '오늘 정기휴무' | '브레이크타임 중' | '영업시간 외' */
+  reason: string | null;
 }
 
 const DASH = "(?:~|∼|-|–|—)";
@@ -62,14 +66,53 @@ function parseRange(texts: { text: string; assumeWeekday: boolean }[]): Range | 
   return null;
 }
 
+/** 'HH:MM~HH:MM' → 분 구간 */
+function parseHM(range: unknown): { start: number; end: number } | null {
+  if (typeof range !== "string") return null;
+  const m = RANGE_COLON.exec(range);
+  if (!m) return null;
+  const start = Number(m[1]) * 60 + Number(m[2]);
+  const end = Number(m[3]) * 60 + Number(m[4]);
+  return start === end || start > 24 * 60 || end > 24 * 60 ? null : { start, end };
+}
+
+function inRange(minutes: number, { start, end }: { start: number; end: number }) {
+  return start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end; // 자정 넘김
+}
+
+/**
+ * 현장에서 등록한 정보(feedback.closed_days / break_time / hours)로 판별. 있으면 summary 추정보다 우선한다.
+ * 정기휴무일 → 브레이크타임 → 영업시간 순으로 본다. 판별할 정보가 없으면 null(요약 기반 판별로 넘어감).
+ */
+function fieldState(place: Place, nowMs: number): OpenState | null {
+  const fb = place.feedback ?? {};
+  const closed = Array.isArray(fb.closed_days) ? fb.closed_days : [];
+  const brk = parseHM(fb.break_time);
+  const hrs = parseHM(fb.hours);
+  if (closed.length === 0 && !brk && !hrs) return null;
+
+  const { dow, minutes } = kstNow(nowMs);
+  if (closed.includes(DAY_CHARS[dow])) return { status: false, label: null, reason: "오늘 정기휴무" };
+  if (brk && inRange(minutes, brk)) return { status: false, label: null, reason: "브레이크타임 중" };
+  if (hrs) {
+    return inRange(minutes, hrs)
+      ? { status: true, label: "영업 중", reason: null }
+      : { status: false, label: null, reason: "영업시간 외" };
+  }
+  return null; // 휴무일/브레이크만 있고 영업시간이 없으면 오늘 영업 여부는 모른다 → 요약 기반으로
+}
+
 export function getOpenState(place: Place, nowMs: number): OpenState {
+  const field = fieldState(place, nowMs);
+  if (field) return field;
+
   const summary = place.summary ?? "";
   const extra = (place.extra ?? []).join(" ");
   const tags = (place.tags ?? []).join(" ");
 
   // 1) 24시간/연중무휴 — 구간 표기와 확인 문구를 지운 뒤 판별
   const corpus = `${tags} ${summary} ${extra} ${place.name}`.replace(RANGE_ANY, " ").replace(UNCERTAIN_24, " ");
-  if (ALWAYS_OPEN.test(corpus)) return { status: true, label: "24시간 운영 중" };
+  if (ALWAYS_OPEN.test(corpus)) return { status: true, label: "24시간 운영 중", reason: null };
 
   // 2) 명시된 영업시간 구간 (요약·extra 우선, 없으면 '#9~18시' 태그 = 평일 시간)
   const range = parseRange([
@@ -77,12 +120,12 @@ export function getOpenState(place: Place, nowMs: number): OpenState {
     { text: extra, assumeWeekday: false },
     { text: tags, assumeWeekday: true },
   ]);
-  if (!range) return { status: null, label: null };
+  if (!range) return { status: null, label: null, reason: null };
 
   const { dow, minutes } = kstNow(nowMs);
-  if (range.weekdayOnly && dow >= 5) return { status: null, label: null }; // 주말 시간은 모른다
+  if (range.weekdayOnly && dow >= 5) return { status: null, label: null, reason: null }; // 주말 시간은 모른다
 
   const { start, end } = range;
   const open = start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end; // 자정 넘김
-  return open ? { status: true, label: "영업 중" } : { status: false, label: null };
+  return open ? { status: true, label: "영업 중", reason: null } : { status: false, label: null, reason: null };
 }

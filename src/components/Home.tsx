@@ -8,6 +8,7 @@ import {
   Heart,
   LocateFixed,
   MapPin,
+  PencilLine,
   List,
   Map as MapIcon,
   Plus,
@@ -22,14 +23,18 @@ import {
   FILTERS,
   ageTier,
   distanceM,
+  feedbackCount,
+  fieldInfo,
   foodLabel,
   isVisiblePlace,
   matchesFilter,
   nearestParking,
   walkMinutes,
   yearsInBusiness,
+  timeAgo,
   type Mode,
   type Place,
+  type PlaceFeedback,
 } from "@/data/places";
 import { toggleFavorite, useFavorites } from "@/lib/favorites";
 import { getOpenState } from "@/lib/openStatus";
@@ -40,6 +45,7 @@ import { useMinuteClock } from "@/lib/useMinuteClock";
 import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
+import FieldTipSheet from "./FieldTipSheet";
 import PlaceMap from "./PlaceMap";
 import NavigationButton from "./NavigationButton";
 import type { NavOrigin } from "@/lib/navigation";
@@ -94,8 +100,9 @@ type Fetched = { key: string; places: Place[]; error: boolean; staleAt: number |
 
 const FETCH_TIMEOUT_MS = 10_000;
 
-function useNearby(loc: Loc, nonce: number) {
+function useNearby(loc: Loc, nonce: number, refresh: number) {
   const [result, setResult] = useState<Fetched | null>(null);
+  const loadedKey = useRef<string | null>(null); // 마지막으로 성공적으로 불러온 key
   const key = loc.kind === "pending" ? null : `${loc.lat},${loc.lng},${nonce}`;
 
   useEffect(() => {
@@ -103,10 +110,12 @@ function useNearby(loc: Loc, nonce: number) {
     let cancelled = false;
     const ctrl = new AbortController();
     const { lat, lng } = loc;
+    // 이미 이 위치의 데이터가 화면에 있으면(조용한 새로고침) 실패해도 지금 화면을 그대로 둔다
+    const silent = loadedKey.current === key;
 
     // 오프라인·타임아웃·실패 시: 직전 조회 캐시(3km 이내)가 있으면 에러 대신 그것을 보여준다
     const fallback = () => {
-      if (cancelled) return;
+      if (cancelled || silent) return;
       const cached = readNearby(lat, lng);
       setResult(
         cached
@@ -139,6 +148,7 @@ function useNearby(loc: Loc, nonce: number) {
         }
         const places = (data ?? []) as Place[];
         saveNearby(lat, lng, places);
+        loadedKey.current = key;
         setResult({ key, places, error: false, staleAt: null });
       })
       .then(undefined, (e) => {
@@ -151,7 +161,7 @@ function useNearby(loc: Loc, nonce: number) {
       window.clearTimeout(timer);
       ctrl.abort();
     };
-  }, [loc, key]);
+  }, [loc, key, refresh]);
 
   const ready = result !== null && result.key === key;
   return {
@@ -405,6 +415,7 @@ function PlaceCard({
   onShowParking,
   nowMs,
   origin,
+  onAddTip,
 }: {
   place: Place;
   all: Place[];
@@ -414,6 +425,8 @@ function PlaceCard({
   nowMs: number;
   /** 길찾기 출발지(현재 기준 위치). 네이버지도 웹 경로의 출발지 입력에 쓴다. */
   origin?: NavOrigin;
+  /** '현장 정보 추가' 바텀 시트 열기 */
+  onAddTip: (place: Place) => void;
 }) {
   const near = nearestParking(place, all);
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
@@ -425,6 +438,9 @@ function PlaceCard({
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
   const fav = !!useFavorites()[place.id];
+  const info = fieldInfo(place);
+  const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime || !!info.tip;
+  const statusRow = !!open?.status || !!open?.reason;
 
   return (
     <article
@@ -472,28 +488,70 @@ function PlaceCard({
         ))}
       </ul>
 
-      {open?.status && (
+      {open?.status ? (
         <p className="mt-3 flex items-center gap-1.5 text-caption font-bold text-success">
           <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-success" />
           {open.label}
         </p>
-      )}
-      <p className={`${open?.status ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
+      ) : open?.reason ? (
+        <p className="mt-3 flex items-center gap-1.5 text-caption font-bold text-danger">
+          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-danger" />
+          {open.reason}
+        </p>
+      ) : null}
+      <p className={`${statusRow ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
 
-      {chips.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {chips.map((c) => (
-            <FeedbackChip
-              key={c.key}
-              placeId={place.id}
-              chipKey={c.key}
-              emoji={c.emoji}
-              label={c.label}
-              count={place.feedback[c.key] ?? 0}
-            />
-          ))}
+      {hasField && (
+        <div className="mt-2 space-y-1.5" aria-label="현장 정보">
+          {(info.closedDays.length > 0 || info.hours || info.breakTime) && (
+            <ul className="flex flex-wrap gap-1.5">
+              {info.closedDays.length > 0 && (
+                <li className="rounded-md border border-danger px-2 py-0.5 text-caption font-semibold text-danger">
+                  정기휴무 {info.closedDays.join("·")}
+                </li>
+              )}
+              {info.hours && (
+                <li className="tnum rounded-md border border-line bg-bg px-2 py-0.5 text-caption font-semibold text-ink">
+                  영업 {info.hours}
+                </li>
+              )}
+              {info.breakTime && (
+                <li className="tnum rounded-md border border-line bg-bg px-2 py-0.5 text-caption font-semibold text-ink">
+                  브레이크 {info.breakTime}
+                </li>
+              )}
+            </ul>
+          )}
+          {info.tip && (
+            <blockquote className="theme-t rounded-r-xl border-l-4 border-primary bg-bg px-3 py-2 text-label text-ink">
+              “{info.tip.t}”
+              <span className="ml-1 text-caption font-medium text-muted">
+                · 현장 팁 {timeAgo(info.tip.at, nowMs)}
+              </span>
+            </blockquote>
+          )}
         </div>
       )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {chips.map((c) => (
+          <FeedbackChip
+            key={c.key}
+            placeId={place.id}
+            chipKey={c.key}
+            emoji={c.emoji}
+            label={c.label}
+            count={feedbackCount(place, c.key)}
+          />
+        ))}
+        <button
+          onClick={() => onAddTip(place)}
+          className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border border-dashed border-primary px-3 text-caption font-semibold text-primary active:opacity-80"
+        >
+          <PencilLine size={14} aria-hidden />
+          {hasField ? "현장 정보 수정" : "현장 정보 추가"}
+        </button>
+      </div>
 
       <div className="mt-3 flex gap-2">
         <NavigationButton
@@ -574,7 +632,61 @@ export default function Home() {
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  const { loading, error, places: all, staleAt } = useNearby(loc, nonce);
+  const [refresh, setRefresh] = useState(0); // 조용한 새로고침(화면 유지)
+  const [tipTarget, setTipTarget] = useState<Place | null>(null); // '현장 정보 추가' 시트 대상
+  const [patches, setPatches] = useState<Record<string, PlaceFeedback>>({}); // 내가/다른 기기가 방금 바꾼 feedback
+
+  const { loading, error, places: fetched, staleAt } = useNearby(loc, nonce, refresh);
+  // 조회 결과 위에 최신 현장 정보(내 등록 + 실시간 수신)를 덮어쓴다
+  const all = useMemo(
+    () => fetched.map((p) => (patches[p.id] ? { ...p, feedback: patches[p.id] } : p)),
+    [fetched, patches],
+  );
+
+  // 현재 화면에 있는 장소 id (실시간 변경 중 관련 있는 것만 반영하기 위해)
+  const visibleIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    visibleIds.current = new Set(fetched.map((p) => p.id));
+  }, [fetched]);
+
+  // 두 기기 실시간 공유: bml_places 변경(Supabase Realtime) 수신. 004 마이그레이션이 테이블을 publication에 등록한다.
+  // 미설정/오프라인이어도 앱은 그대로 동작하고, 아래 '다시 켰을 때 새로고침'이 보완한다.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    let cleanup = () => {};
+    try {
+      const sb = getSupabase();
+      const channel = sb
+        .channel("bml-places-live")
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "bml_places" }, (payload) => {
+          const row = payload.new as { id?: string; feedback?: PlaceFeedback };
+          if (!row?.id || !row.feedback || !visibleIds.current.has(row.id)) return;
+          const { id, feedback } = row;
+          setPatches((prev) => ({ ...prev, [id]: feedback }));
+        })
+        .subscribe();
+      cleanup = () => {
+        sb.removeChannel(channel);
+      };
+    } catch (e) {
+      console.error("realtime", e);
+    }
+    return () => cleanup();
+  }, []);
+
+  // 앱을 잠시 떠났다(30초+) 돌아오면 조용히 최신 데이터로 갱신 (실시간 연결이 끊겼을 때의 보완)
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > 30_000) {
+        hiddenAt = 0;
+        setRefresh((n) => n + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   // 네트워크가 돌아오면 자동으로 다시 불러온다 (오프라인 캐시 배너 해제)
   useEffect(() => {
@@ -736,7 +848,8 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const places = useMemo(() => rawPlaces, [placesKey]);
 
-  const selected = places.find((p) => p.id === selectedId) ?? null;
+  // 카드(목록·지도 하단)는 최신 현장 정보가 담긴 rawPlaces로, 지도 핀(places)은 id가 같으면 참조를 유지해 화면이 다시 맞춰지지 않게 한다
+  const selected = rawPlaces.find((p) => p.id === selectedId) ?? null;
   // 길찾기 출발지: GPS면 '내 위치', 선택한 동네/역이면 그 이름
   const origin: NavOrigin | undefined =
     loc.kind === "pending"
@@ -838,6 +951,7 @@ export default function Home() {
                 onShowParking={showParking}
                 nowMs={nowMs}
                 origin={origin}
+                onAddTip={setTipTarget}
               />
             )}
           </PlaceMap>
@@ -870,7 +984,7 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          places.map((p) => (
+          rawPlaces.map((p) => (
             <PlaceCard
               key={p.id}
               place={p}
@@ -879,6 +993,7 @@ export default function Home() {
               onShowParking={showParking}
               nowMs={nowMs}
               origin={origin}
+              onAddTip={setTipTarget}
             />
           ))
         )}
@@ -903,6 +1018,17 @@ export default function Home() {
         </div>
       </main>
 
+
+      {tipTarget && (
+        <FieldTipSheet
+          place={tipTarget}
+          onClose={() => setTipTarget(null)}
+          onSaved={(id, feedback) => {
+            setPatches((prev) => ({ ...prev, [id]: feedback }));
+            showToast("현장 정보를 등록했어요. 다른 기기에도 바로 공유돼요!");
+          }}
+        />
+      )}
 
       {reportOpen && (
         <ReportSheet
