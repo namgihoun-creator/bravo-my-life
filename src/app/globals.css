@@ -312,3 +312,10 @@ body {
   border-radius: 999px;
   background: var(--border);
 }
+
+/* ── 가로 스크롤 칩: 오른쪽 가장자리를 부드럽게 흐려 '더 있음'을 알린다 (끝까지 스크롤하면 패딩 덕에 마지막 칩은 선명) ── */
+.chip-fade {
+  padding-right: 28px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}

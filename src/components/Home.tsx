@@ -35,6 +35,7 @@ import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
 import PlaceMap from "./PlaceMap";
 import NavigationButton from "./NavigationButton";
+import type { NavOrigin } from "@/lib/navigation";
 import { showToast } from "@/lib/toast";
 
 const RADIUS_M = 2000;
@@ -291,7 +292,7 @@ function FilterChips({
       ref={ref}
       role="group"
       aria-label="카테고리 필터"
-      className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto"
+      className="no-scrollbar chip-fade flex min-w-0 flex-1 gap-2 overflow-x-auto"
     >
       {items}
     </div>
@@ -368,6 +369,7 @@ function PlaceCard({
   highlighted,
   onShowParking,
   nowMs,
+  origin,
 }: {
   place: Place;
   all: Place[];
@@ -375,6 +377,8 @@ function PlaceCard({
   onShowParking: (parkingId: string) => void;
   /** 현재 시각(ms, 분 단위). 영업 중 상태 점 표시에 쓴다. */
   nowMs: number;
+  /** 길찾기 출발지(현재 기준 위치). 네이버지도 웹 경로의 출발지 입력에 쓴다. */
+  origin?: NavOrigin;
 }) {
   const near = nearestParking(place, all);
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
@@ -445,7 +449,10 @@ function PlaceCard({
         </div>
       )}
 
-      <NavigationButton target={{ name: place.name, lat: place.lat, lng: place.lng }} />
+      <NavigationButton
+        target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }}
+        origin={origin}
+      />
 
       {near && (
         <button
@@ -638,6 +645,11 @@ export default function Home() {
   const places = useMemo(() => rawPlaces, [placesKey]);
 
   const selected = places.find((p) => p.id === selectedId) ?? null;
+  // 길찾기 출발지: GPS면 '내 위치', 선택한 동네/역이면 그 이름
+  const origin: NavOrigin | undefined =
+    loc.kind === "pending"
+      ? undefined
+      : { lat: loc.lat, lng: loc.lng, label: loc.kind === "gps" ? "내 위치" : loc.name };
   const center =
     loc.kind === "pending"
       ? null
@@ -732,6 +744,7 @@ export default function Home() {
                 highlighted={false}
                 onShowParking={showParking}
                 nowMs={nowMs}
+                origin={origin}
               />
             )}
           </PlaceMap>
@@ -772,6 +785,7 @@ export default function Home() {
               highlighted={p.id === highlightId}
               onShowParking={showParking}
               nowMs={nowMs}
+              origin={origin}
             />
           ))
         )}

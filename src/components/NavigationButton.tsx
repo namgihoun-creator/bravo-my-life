@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, X } from "lucide-react";
-import { NAV_APPS, openNavigation, useNavApp, type NavApp, type NavTarget } from "@/lib/navigation";
+import {
+  NAV_APPS,
+  openNavigation,
+  useNavApp,
+  type NavApp,
+  type NavOrigin,
+  type NavTarget,
+} from "@/lib/navigation";
 
 const meta = (app: NavApp) => NAV_APPS.find((a) => a.key === app) ?? NAV_APPS[0];
 
@@ -19,11 +26,13 @@ function AppDot({ app }: { app: NavApp }) {
 function NavAppSheet({
   current,
   target,
+  origin,
   onSelect,
   onClose,
 }: {
   current: NavApp;
   target: NavTarget;
+  origin?: NavOrigin;
   onSelect: (app: NavApp) => void;
   onClose: () => void;
 }) {
@@ -93,7 +102,7 @@ function NavAppSheet({
                   onClick={() => {
                     onSelect(a.key);
                     onClose();
-                    openNavigation(a.key, target);
+                    openNavigation(a.key, target, origin);
                   }}
                   aria-label={`${a.label} 바로 길안내`}
                   className="min-h-[52px] shrink-0 cursor-pointer rounded-xl border border-primary px-3 text-label font-bold text-primary"
@@ -116,7 +125,7 @@ function NavAppSheet({
  * - 오른쪽 ▾: 앱 선택 시트 (선택만 바꾸기 / 선택하고 바로 안내)
  * 선택값은 전역(localStorage)이라 한 곳에서 바꾸면 모든 카드가 즉시 바뀐다.
  */
-export default function NavigationButton({ target }: { target: NavTarget }) {
+export default function NavigationButton({ target, origin }: { target: NavTarget; origin?: NavOrigin }) {
   const [app, setApp] = useNavApp();
   const [open, setOpen] = useState(false);
   const label = `${meta(app).label} 길찾기`;
@@ -125,7 +134,7 @@ export default function NavigationButton({ target }: { target: NavTarget }) {
     <>
       <div className={`nav-btn nav-btn-${app} theme-t mt-3 flex h-12 w-full overflow-hidden rounded-xl`}>
         <button
-          onClick={() => openNavigation(app, target)}
+          onClick={() => openNavigation(app, target, origin)}
           className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 text-label font-bold active:opacity-90"
         >
           <AppDot app={app} />
@@ -142,7 +151,13 @@ export default function NavigationButton({ target }: { target: NavTarget }) {
         </button>
       </div>
       {open && (
-        <NavAppSheet current={app} target={target} onSelect={setApp} onClose={() => setOpen(false)} />
+        <NavAppSheet
+          current={app}
+          target={target}
+          origin={origin}
+          onSelect={setApp}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );

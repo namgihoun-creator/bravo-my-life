@@ -1,12 +1,22 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { showToast } from "@/lib/toast";
+import {
+  buildKakaoUrl,
+  buildNaverAppUrl,
+  buildNaverWebUrl,
+  buildTmapUrl,
+  type NavApp,
+  type NavOrigin,
+  type NavTarget,
+} from "@/lib/navUrls";
+
+export { routeModeFor } from "@/lib/navUrls";
+export type { NavApp, NavOrigin, NavTarget } from "@/lib/navUrls";
 
 /**
  * 멀티 길찾기: 카카오맵 / 네이버지도 / 티맵.
  * 선택한 앱은 localStorage(bml_nav_app)에 저장되고, 한 곳에서 바꾸면 모든 카드가 즉시 따라 바뀐다.
  */
-export type NavApp = "kakao" | "naver" | "tmap";
-
 export const NAV_APPS: { key: NavApp; label: string; short: string }[] = [
   { key: "kakao", label: "카카오맵", short: "K" },
   { key: "naver", label: "네이버지도", short: "N" },
@@ -18,13 +28,7 @@ const KEY = "bml_nav_app";
 const EVENT = "bml-nav-app-change";
 
 export const TMAP_FAIL_MESSAGE = "티맵 앱이 실행되지 않았어요. 모바일에서 티맵 설치 여부를 확인해 주세요.";
-const TMAP_WAIT_MS = 1500;
-
-export interface NavTarget {
-  name: string;
-  lat: number;
-  lng: number;
-}
+const SCHEME_WAIT_MS = 1500;
 
 /* ───────────── 선택 상태 (localStorage + React 동기화) ───────────── */
 
@@ -84,23 +88,13 @@ export function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
-export function buildNavUrl(app: NavApp, { name, lat, lng }: NavTarget): string {
-  const n = encodeURIComponent(name);
-  switch (app) {
-    case "kakao":
-      return `https://map.kakao.com/link/to/${n},${lat},${lng}`;
-    case "naver":
-      // 네이버지도 통합 경로(/p/directions): 모바일은 앱/웹, 데스크톱은 웹으로 자연스럽게 이어진다
-      return `https://map.naver.com/p/directions/-/${lng},${lat},${n}/-/transit`;
-    case "tmap":
-      return `tmap://route?goalname=${n}&goalx=${lng}&goaly=${lat}`;
-  }
-}
-
 /* ───────────── 실행 ───────────── */
 
-/** 티맵 스킴 호출 후 1.5초 안에 화면이 그대로면(앱 미설치/PC) 안내 토스트 */
-function launchTmap(url: string) {
+/**
+ * 앱 스킴 호출 후 1.5초 안에 화면 이탈(앱 전환)이 없으면 onFail 실행.
+ * 모바일은 location.href, 데스크톱은 숨은 iframe으로 시도해 오류 화면/경고가 뜨지 않게 한다.
+ */
+function launchScheme(url: string, onFail: () => void) {
   let left = false;
   const onLeave = () => {
     left = true;
@@ -115,20 +109,19 @@ function launchTmap(url: string) {
   if (isMobileDevice()) {
     window.location.href = url;
   } else {
-    // 데스크톱 브라우저에서 알 수 없는 스킴으로 이동해 오류 화면/경고가 뜨지 않게 숨은 iframe으로 시도
     const frame = document.createElement("iframe");
     frame.style.display = "none";
     frame.src = url;
     document.body.appendChild(frame);
-    window.setTimeout(() => frame.remove(), TMAP_WAIT_MS + 500);
+    window.setTimeout(() => frame.remove(), SCHEME_WAIT_MS + 500);
   }
 
   window.setTimeout(() => {
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("pagehide", onLeave);
     window.removeEventListener("blur", onLeave);
-    if (!left && document.visibilityState === "visible") showToast(TMAP_FAIL_MESSAGE);
-  }, TMAP_WAIT_MS);
+    if (!left && document.visibilityState === "visible") onFail();
+  }, SCHEME_WAIT_MS);
 }
 
 /**
@@ -147,8 +140,29 @@ function openExternal(url: string) {
   a.remove();
 }
 
-export function openNavigation(app: NavApp, target: NavTarget) {
-  const url = buildNavUrl(app, target);
-  if (app === "tmap") return launchTmap(url);
-  openExternal(url);
+/** 네이버지도 앱 식별자: 배포 도메인(localhost면 기본값) */
+function naverAppName(): string | undefined {
+  const host = window.location.hostname;
+  return host && host !== "localhost" && host !== "127.0.0.1" ? host : undefined;
+}
+
+/**
+ * 길찾기 실행.
+ * - 카카오: 새 탭으로 길찾기 URL
+ * - 네이버: 모바일은 앱 스킴(nmap://route/...)을 먼저 호출 → 앱이 열리면 출발지가 '내 위치'로 자동 설정.
+ *   1.5초 안에 앱으로 전환되지 않으면(미설치) 웹 경로로 넘어가고, 데스크톱은 곧바로 웹 경로.
+ *   웹 경로에는 현재 기준 위치(origin)를 출발지로 채운다. 경로 타입은 공영주차장=자동차, 그 외=도보.
+ * - 티맵: tmap:// 스킴, 1.5초 안에 전환이 없으면 안내 토스트
+ */
+export function openNavigation(app: NavApp, target: NavTarget, origin?: NavOrigin) {
+  if (app === "tmap") {
+    return launchScheme(buildTmapUrl(target), () => showToast(TMAP_FAIL_MESSAGE));
+  }
+  if (app === "naver") {
+    const webUrl = buildNaverWebUrl(target, origin);
+    if (!isMobileDevice()) return openExternal(webUrl);
+    // 모바일: 같은 탭으로 웹 경로 이동(비동기 시점의 새 탭 열기는 팝업 차단될 수 있어 location 이동 사용)
+    return launchScheme(buildNaverAppUrl(target, naverAppName()), () => window.location.assign(webUrl));
+  }
+  openExternal(buildKakaoUrl(target));
 }
