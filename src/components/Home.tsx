@@ -9,7 +9,6 @@ import {
   MapPin,
   List,
   Map as MapIcon,
-  Navigation,
   Plus,
   Siren,
   Store,
@@ -35,6 +34,8 @@ import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
 import PlaceMap from "./PlaceMap";
+import NavigationButton from "./NavigationButton";
+import { showToast } from "@/lib/toast";
 
 const RADIUS_M = 2000;
 const EMPTY: Place[] = []; // 로딩 중 반환값을 안정된 참조로 유지 (지도 재그리기 방지)
@@ -378,7 +379,6 @@ function PlaceCard({
   const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
   const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
   const BadgeIcon = isSurvival ? Clock3 : Award;
-  const href = `https://map.kakao.com/link/to/${encodeURIComponent(place.name)},${place.lat},${place.lng}`;
   const dist = Math.round(place.distance_m);
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
 
@@ -442,15 +442,7 @@ function PlaceCard({
         </div>
       )}
 
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="theme-t mt-3 flex h-12 w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-cta text-label font-bold text-on-cta active:scale-[0.98]"
-      >
-        <Navigation size={16} aria-hidden />
-        카카오맵 길찾기
-      </a>
+      <NavigationButton target={{ name: place.name, lat: place.lat, lng: place.lng }} />
 
       {near && (
         <button
@@ -495,7 +487,6 @@ export default function Home() {
   const [loc, setLoc] = useState<Loc>({ kind: "pending" });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [view, setView] = useState<View>("list"); // 기본값: 목록
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
@@ -795,14 +786,6 @@ export default function Home() {
         </div>
       </main>
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed inset-x-0 bottom-[max(16px,env(safe-area-inset-bottom))] z-40 mx-auto w-fit max-w-[90%] rounded-full bg-ink px-4 py-2.5 text-label font-semibold text-bg shadow-sticky"
-        >
-          {toast}
-        </div>
-      )}
 
       {reportOpen && (
         <ReportSheet
@@ -812,8 +795,7 @@ export default function Home() {
           onDone={() => {
             setReportOpen(false);
             setNonce((n) => n + 1); // 방금 제보한 장소가 목록에 반영되도록 다시 조회
-            setToast("제보가 등록됐어요. 고마워요!");
-            window.setTimeout(() => setToast(null), 2500);
+            showToast("제보가 등록됐어요. 고마워요!");
           }}
         />
       )}
