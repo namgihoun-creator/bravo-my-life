@@ -27,7 +27,10 @@ import {
   type Mode,
   type Place,
 } from "@/data/places";
+import { getOpenState } from "@/lib/openStatus";
+import { readNearby, saveNearby } from "@/lib/placeCache";
 import { getSupabase } from "@/lib/supabase";
+import { useMinuteClock } from "@/lib/useMinuteClock";
 import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
@@ -77,7 +80,10 @@ function LocationBadge({ loc, onClick }: { loc: Loc; onClick: () => void }) {
 
 /* ───────────────────────── 데이터 ───────────────────────── */
 
-type Fetched = { key: string; places: Place[]; error: boolean };
+/** staleAt: 네트워크 실패/오프라인으로 캐시를 대신 보여주는 경우 그 캐시의 저장 시각(ms) */
+type Fetched = { key: string; places: Place[]; error: boolean; staleAt: number | null };
+
+const FETCH_TIMEOUT_MS = 10_000;
 
 function useNearby(loc: Loc, nonce: number) {
   const [result, setResult] = useState<Fetched | null>(null);
@@ -86,21 +92,55 @@ function useNearby(loc: Loc, nonce: number) {
   useEffect(() => {
     if (loc.kind === "pending" || !key) return;
     let cancelled = false;
+    const ctrl = new AbortController();
+    const { lat, lng } = loc;
+
+    // 오프라인·타임아웃·실패 시: 직전 조회 캐시(3km 이내)가 있으면 에러 대신 그것을 보여준다
+    const fallback = () => {
+      if (cancelled) return;
+      const cached = readNearby(lat, lng);
+      setResult(
+        cached
+          ? { key, places: cached.places, error: false, staleAt: cached.t }
+          : { key, places: [], error: true, staleAt: null },
+      );
+    };
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      fallback();
+      return;
+    }
+
+    const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     getSupabase()
       .rpc("bml_get_nearby_places", {
-        p_lat: loc.lat,
-        p_lng: loc.lng,
+        p_lat: lat,
+        p_lng: lng,
         p_radius_m: RADIUS_M,
         p_mode: null,
         p_limit: 300,
       })
+      .abortSignal(ctrl.signal)
       .then(({ data, error }) => {
+        window.clearTimeout(timer);
         if (cancelled) return;
-        if (error) console.error("bml_get_nearby_places", error);
-        setResult({ key, places: error ? [] : ((data ?? []) as Place[]), error: !!error });
+        if (error) {
+          console.error("bml_get_nearby_places", error);
+          return fallback();
+        }
+        const places = (data ?? []) as Place[];
+        saveNearby(lat, lng, places);
+        setResult({ key, places, error: false, staleAt: null });
+      })
+      .then(undefined, (e) => {
+        window.clearTimeout(timer);
+        console.error("bml_get_nearby_places", e);
+        fallback();
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      ctrl.abort();
     };
   }, [loc, key]);
 
@@ -109,6 +149,7 @@ function useNearby(loc: Loc, nonce: number) {
     loading: !ready,
     error: ready && result.error,
     places: ready ? result.places : EMPTY,
+    staleAt: ready ? result.staleAt : null,
   };
 }
 
@@ -182,21 +223,64 @@ function FilterChips({
   value,
   counts,
   onChange,
+  openOnly,
+  onToggleOpen,
 }: {
   mode: Mode;
   value: string;
   /** 현재 반경 내 필터별 장소 수. null(로딩/오류)이면 모든 칩을 보여준다. */
   counts: Record<string, number> | null;
   onChange: (k: string) => void;
+  /** '지금 영업 중 / 지금 이용 가능(24시)' 토글 */
+  openOnly: boolean;
+  onToggleOpen: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // 활성 칩이 가로 스크롤 영역 안쪽(중앙)으로 오도록 자동 스크롤
+  // 활성 카테고리 칩이 가로 스크롤 영역 안쪽(중앙)으로 오도록 자동 스크롤
   useEffect(() => {
     ref.current
-      ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+      ?.querySelector<HTMLElement>('[data-filter-chip][aria-pressed="true"]')
       ?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [mode, value]);
+
+  const chips = FILTERS[mode].filter((f) => !counts || f.key === "all" || counts[f.key] > 0);
+  const openLabel = mode === "survival" ? "지금 이용 가능(24시)" : "지금 영업 중";
+
+  const openChip = (
+    <button
+      key="open-now"
+      aria-pressed={openOnly}
+      onClick={onToggleOpen}
+      className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
+        openOnly ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`h-2 w-2 rounded-full ${openOnly ? "bg-accent" : "bg-success"}`}
+      />
+      {openLabel}
+    </button>
+  );
+
+  const items = chips.map((f) => {
+    const active = f.key === value;
+    return (
+      <button
+        key={f.key}
+        data-filter-chip
+        aria-pressed={active}
+        onClick={() => onChange(f.key)}
+        className={`theme-t min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-4 text-label font-semibold ${
+          active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
+        }`}
+      >
+        {f.label}
+      </button>
+    );
+  });
+  items.splice(1, 0, openChip); // '전체' 바로 뒤
 
   return (
     <div
@@ -205,25 +289,7 @@ function FilterChips({
       aria-label="카테고리 필터"
       className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto"
     >
-      {FILTERS[mode]
-        .filter((f) => !counts || f.key === "all" || counts[f.key] > 0)
-        .map((f) => {
-        const active = f.key === value;
-        return (
-          <button
-            key={f.key}
-            aria-pressed={active}
-            onClick={() => onChange(f.key)}
-            className={`theme-t min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-4 text-label font-semibold ${
-              active
-                ? "border-primary bg-primary text-on-primary"
-                : "border-line bg-surface text-ink"
-            }`}
-          >
-            {f.label}
-          </button>
-        );
-      })}
+      {items}
     </div>
   );
 }
@@ -297,13 +363,17 @@ function PlaceCard({
   all,
   highlighted,
   onShowParking,
+  nowMs,
 }: {
   place: Place;
   all: Place[];
   highlighted: boolean;
   onShowParking: (parkingId: string) => void;
+  /** 현재 시각(ms, 분 단위). 영업 중 상태 점 표시에 쓴다. */
+  nowMs: number;
 }) {
   const near = nearestParking(place, all);
+  const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
   const isSurvival = place.mode === "survival";
   const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
   const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
@@ -349,7 +419,13 @@ function PlaceCard({
         ))}
       </ul>
 
-      <p className="mt-3 line-clamp-2 text-body text-ink">{place.summary}</p>
+      {open?.status && (
+        <p className="mt-3 flex items-center gap-1.5 text-caption font-bold text-success">
+          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-success" />
+          {open.label}
+        </p>
+      )}
+      <p className={`${open?.status ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
 
       {chips.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -403,6 +479,14 @@ function SkeletonCard() {
   );
 }
 
+function agoText(diffMs: number): string {
+  const min = Math.max(0, Math.round(diffMs / 60_000));
+  if (min < 1) return "방금 저장";
+  if (min < 60) return `${min}분 전`;
+  const h = Math.round(min / 60);
+  return h < 24 ? `${h}시간 전` : `${Math.round(h / 24)}일 전`;
+}
+
 /* ───────────────────────── 메인 ───────────────────────── */
 
 export default function Home() {
@@ -415,11 +499,20 @@ export default function Home() {
   const [nonce, setNonce] = useState(0);
   const [view, setView] = useState<View>("list"); // 기본값: 목록
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
+  const [openOnly, setOpenOnly] = useState(false); // '지금 영업 중 / 이용 가능(24시)' 필터
+  const nowMs = useMinuteClock();
   // scrollTargetId: 스크롤 이동 대상 / highlightId: 도착 후 링 강조 중인 카드
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  const { loading, error, places: all } = useNearby(loc, nonce);
+  const { loading, error, places: all, staleAt } = useNearby(loc, nonce);
+
+  // 네트워크가 돌아오면 자동으로 다시 불러온다 (오프라인 캐시 배너 해제)
+  useEffect(() => {
+    const onOnline = () => setNonce((n) => n + 1);
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   // 최초 진입: GPS → 거부/실패 시 '부천역 인근' 폴백. 그 사이 사용자가 직접 고른 동네는 덮어쓰지 않는다.
   useEffect(() => {
@@ -513,22 +606,36 @@ export default function Home() {
   }, [scrollTargetId]);
 
   // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
-  const { counts, activeFilter, places } = useMemo(() => {
+  const clock = openOnly ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
+  const { counts, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
     // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
-    const modePlaces = all.filter((p) => p.mode === mode && isVisiblePlace(p));
+    const base = all.filter((p) => p.mode === mode && isVisiblePlace(p));
+    // '지금 영업 중'이 켜지면 확실히 이용 가능(true)한 곳만 남긴다. 모르는 곳(null)은 허위 표시 없이 제외한다.
+    const pool = openOnly ? base.filter((p) => getOpenState(p, clock).status === true) : base;
     const counts =
       loading || error
         ? null
         : Object.fromEntries(
-            FILTERS[mode].map((f) => [f.key, modePlaces.filter((p) => matchesFilter(p, f.key)).length]),
+            FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
           );
     const activeFilter = counts && !counts[filter] ? "all" : filter;
+    const unknownExcluded = openOnly
+      ? base.filter(
+          (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
+        ).length
+      : 0;
     return {
       counts,
       activeFilter,
-      places: modePlaces.filter((p) => matchesFilter(p, activeFilter)),
+      rawPlaces: pool.filter((p) => matchesFilter(p, activeFilter)),
+      unknownExcluded,
     };
-  }, [all, mode, filter, loading, error]);
+  }, [all, mode, filter, loading, error, openOnly, clock]);
+
+  // 분 단위 갱신으로 목록 내용이 그대로인데 배열만 새로 만들어져 지도가 다시 맞춰지지 않도록 id 기준으로 참조를 유지한다
+  const placesKey = rawPlaces.map((p) => p.id).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const places = useMemo(() => rawPlaces, [placesKey]);
 
   const selected = places.find((p) => p.id === selectedId) ?? null;
   const center =
@@ -551,9 +658,36 @@ export default function Home() {
       </header>
 
       <div className="theme-t sticky top-0 z-10 mt-4 space-y-3 bg-bg px-4 pb-3 pt-2 shadow-sticky">
+        {staleAt !== null && (
+          <div
+            role="status"
+            className="flex items-center justify-between gap-2 rounded-xl border border-warning bg-surface pl-3 text-caption font-semibold text-warning"
+          >
+            <span>
+              오프라인 상태 · 마지막으로 불러온 주변 장소입니다
+              {nowMs > 0 && ` (${agoText(nowMs - staleAt)})`}
+            </span>
+            <button
+              onClick={() => setNonce((n) => n + 1)}
+              className="min-h-[44px] shrink-0 cursor-pointer px-3 text-label font-bold text-primary"
+            >
+              다시 연결
+            </button>
+          </div>
+        )}
         <ModeTabs mode={mode} onChange={changeMode} />
         <div className="flex items-center gap-2">
-          <FilterChips mode={mode} value={activeFilter} counts={counts} onChange={changeFilter} />
+          <FilterChips
+            mode={mode}
+            value={activeFilter}
+            counts={counts}
+            onChange={changeFilter}
+            openOnly={openOnly}
+            onToggleOpen={() => {
+              setOpenOnly((v) => !v);
+              setSelectedId(null);
+            }}
+          />
           <ViewToggle view={view} onChange={changeView} />
         </div>
       </div>
@@ -596,14 +730,25 @@ export default function Home() {
                 all={all}
                 highlighted={false}
                 onShowParking={showParking}
+                nowMs={nowMs}
               />
             )}
           </PlaceMap>
         ) : places.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-body text-muted">
-              반경 2km 안에 조건에 맞는 장소가 아직 없어요.
+              {openOnly
+                ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
+                : "반경 2km 안에 조건에 맞는 장소가 아직 없어요."}
             </p>
+            {openOnly && (
+              <button
+                onClick={() => setOpenOnly(false)}
+                className="mt-3 min-h-[44px] cursor-pointer rounded-xl bg-primary px-5 text-label font-bold text-on-primary"
+              >
+                필터 끄고 전체 보기
+              </button>
+            )}
             <button
               onClick={() => setSheetOpen(true)}
               className="mt-3 min-h-[44px] cursor-pointer rounded-xl border border-primary px-5 text-label font-semibold text-primary"
@@ -625,8 +770,14 @@ export default function Home() {
               all={all}
               highlighted={p.id === highlightId}
               onShowParking={showParking}
+              nowMs={nowMs}
             />
           ))
+        )}
+        {openOnly && unknownExcluded > 0 && !loading && !error && (
+          <p className="text-center text-caption text-muted" role="note">
+            영업시간 미확인 장소 {unknownExcluded}곳 제외됨
+          </p>
         )}
         <div className="pt-2 text-center">
           <button
