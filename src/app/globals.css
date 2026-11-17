@@ -217,3 +217,30 @@ body {
   line-height: 16px;
   box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.25);
 }
+
+/* ── 노포 업력 4단계 뱃지 (DESIGN.md §6-1) ── */
+.age-badge {
+  border: 1px solid transparent;
+}
+.age-badge-1 {
+  /* 10~14년 */
+  background: #efe2d3;
+  color: #6b3a18;
+  border-color: #dec7ae;
+}
+.age-badge-2 {
+  /* 15~19년 */
+  background: #ebb138;
+  color: #381e04;
+}
+.age-badge-3 {
+  /* 20~29년 */
+  background: #8c2d19;
+  color: #fff8ee;
+}
+.age-badge-4 {
+  /* 30년+ */
+  background: #241f1c;
+  color: #f7c948;
+  border-color: #c99a2e;
+}

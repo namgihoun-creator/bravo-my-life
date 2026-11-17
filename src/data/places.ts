@@ -18,6 +18,8 @@ export interface Place {
   lng: number;
   /** {"ok": 12, "wait": 3} */
   feedback: Record<string, number>;
+  /** 인허가 연도 (RPC 003 마이그레이션 이후 제공) */
+  open_year?: number | null;
   distance_m: number;
 }
 
@@ -33,10 +35,10 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
   ],
   nopo: [
     { key: "all", label: "전체" },
-    { key: "veteran", label: "업력 20년+" },
-    { key: "solo", label: "혼밥성지" },
-    { key: "soup", label: "해장·국밥" },
-    { key: "pocha", label: "노포포차" },
+    { key: "y10", label: "10년+" },
+    { key: "y15", label: "15년+" },
+    { key: "y20", label: "20년+" },
+    { key: "y30", label: "30년+" },
   ],
 };
 
@@ -162,3 +164,45 @@ export const REPORT_CATEGORIES: Record<Mode, { key: string; label: string }[]> =
     { key: "general", label: "기타 노포" },
   ],
 };
+
+/* ───────────── 노포 업력 ───────────── */
+
+const USER_REPORT_TAG = "#유저제보";
+const CURRENT_YEAR = new Date().getFullYear();
+
+/**
+ * 인허가 기준 업력(년). open_year가 있으면 올해 기준으로 계산하고,
+ * 아직 RPC가 open_year를 주지 않으면 '업력 N년' 뱃지 텍스트로 대체한다. 모르면 null.
+ */
+export function yearsInBusiness(p: Place): number | null {
+  if (typeof p.open_year === "number") return CURRENT_YEAR - p.open_year;
+  const m = /^업력\s*(\d+)년/.exec(p.badge ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/** 업력 4단계: 1=10~14년, 2=15~19년, 3=20~29년, 4=30년+ (뱃지 색 구간) */
+export function ageTier(years: number): 1 | 2 | 3 | 4 {
+  if (years >= 30) return 4;
+  if (years >= 20) return 3;
+  if (years >= 15) return 2;
+  return 1;
+}
+
+/** 노포 모드 기본 노출 조건: 업력 10년 이상으로 검증된 곳 또는 유저 제보. (연식 미확정 '노포 후보'는 숨김) */
+export function isVisiblePlace(p: Place): boolean {
+  if (p.mode !== "nopo") return true;
+  if (p.tags.includes(USER_REPORT_TAG)) return true;
+  const y = yearsInBusiness(p);
+  return y !== null && y >= 10;
+}
+
+/** 필터 칩 매칭 (업력 칩은 'y10' 형태 — N년 이상) */
+export function matchesFilter(p: Place, key: string): boolean {
+  if (key === "all") return true;
+  const m = /^y(\d+)$/.exec(key);
+  if (m) {
+    const y = yearsInBusiness(p);
+    return y !== null && y >= Number(m[1]);
+  }
+  return p.category === key || !!p.extra?.includes(key);
+}

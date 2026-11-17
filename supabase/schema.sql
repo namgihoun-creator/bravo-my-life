@@ -22,6 +22,7 @@ create table if not exists public.bml_places (
   geog        geography(Point, 4326)
               generated always as (st_setsrid(st_makepoint(lng, lat), 4326)::geography) stored,
   feedback    jsonb not null default '{}'::jsonb,   -- {"ok": 12, "wait": 3}
+  open_year   integer,                              -- 인허가 연도 (노포 업력 계산용, 002/003 마이그레이션과 동일)
   source      text not null default 'kakao',
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
@@ -59,6 +60,7 @@ returns table (
   lat         double precision,
   lng         double precision,
   feedback    jsonb,
+  open_year   integer,
   distance_m  double precision
 )
 language sql
@@ -66,7 +68,7 @@ stable
 as $$
   select
     p.id, p.mode, p.category, p.extra, p.name, p.address, p.place_url,
-    p.badge, p.tags, p.summary, p.lat, p.lng, p.feedback,
+    p.badge, p.tags, p.summary, p.lat, p.lng, p.feedback, p.open_year,
     st_distance(p.geog, st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography) as distance_m
   from public.bml_places p
   where st_dwithin(

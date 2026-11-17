@@ -7,8 +7,8 @@
 [1] 노포 (mode='nopo')
     - CSV에서 서울·경기 + 영업 중인 행만, 그것도 DB 노포 상호명과 일치하는 행만 메모리에 적재
     - 상호명 + 구/도로명주소로 매칭해 인허가일자 → 업력 계산
-    - 같은 상호가 3개 이상 구에 있으면 프랜차이즈로 삭제 / 업력 15년 미만이면 삭제
-    - 업력 15년 이상은 '진짜 노포'로 확정(open_year, 뱃지 '업력 N년', 20년 이상은 veteran 필터)
+    - 같은 상호가 3개 이상 구에 있으면 프랜차이즈로 삭제 / 업력 10년 미만이면 삭제
+    - 업력 10년 이상은 '진짜 노포'로 확정(open_year, 뱃지 '업력 N년', 20년 이상은 veteran 필터)
     - 확정 노포는 카카오 블로그 검색으로 광고 비율을 보고(절반 이상이면 삭제) 요약·태그 갱신
       (CLAUDE.md 저작권 규칙: 블로그 문장은 옮기지 않고 키워드만 집계해 직접 쓴 문장으로 요약)
     - CSV에서 못 찾은 후보는 그대로 둔다 (검증 불가 ≠ 가짜)
@@ -54,7 +54,7 @@ OPEN_YEARS_FILE = ROOT / "scripts" / "data" / "open_years.json"
 
 REGIONS = ("서울특별시", "경기도", "인천광역시")  # 부평역 거점 때문에 인천 포함
 TODAY_YEAR = date.today().year
-MIN_AGE = 15
+MIN_AGE = 10  # 업력 10년 이상(인허가 2016년 이전)
 
 
 # ───────────────────────── 공통 ─────────────────────────
@@ -188,8 +188,8 @@ def enrich_nopo(client, dry: bool, use_blog: bool) -> None:
             confirmed.append((r, year))
 
     c = Counter(drop.values())
-    print(f"[노포] 프랜차이즈 삭제 {c['franchise']} / 15년 미만 삭제 {c['young']} / "
-          f"업력 15년+ 확정 {len(confirmed)} / CSV 미매칭 유지 {unmatched}")
+    print(f"[노포] 프랜차이즈 삭제 {c['franchise']} / 10년 미만 삭제 {c['young']} / "
+          f"업력 10년+ 확정 {len(confirmed)} / CSV 미매칭 유지 {unmatched}")
 
     # 블로그 교차 검증 (광고 과다 제외 + 요약·태그)
     updates: list[tuple[str, dict]] = []

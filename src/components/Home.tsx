@@ -18,8 +18,12 @@ import {
   FALLBACK_LOCATION,
   FEEDBACK_CHIPS,
   FILTERS,
+  ageTier,
+  isVisiblePlace,
+  matchesFilter,
   nearestParking,
   walkMinutes,
+  yearsInBusiness,
   type Mode,
   type Place,
 } from "@/data/places";
@@ -301,6 +305,8 @@ function PlaceCard({
 }) {
   const near = nearestParking(place, all);
   const isSurvival = place.mode === "survival";
+  const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
+  const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
   const BadgeIcon = isSurvival ? Clock3 : Award;
   const href = `https://map.kakao.com/link/to/${encodeURIComponent(place.name)},${place.lat},${place.lng}`;
   const dist = Math.round(place.distance_m);
@@ -316,9 +322,13 @@ function PlaceCard({
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-title2 font-bold tracking-[-0.02em] text-ink">{place.name}</h2>
         {place.badge && (
-          <span className="theme-t inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-caption font-bold text-on-accent">
+          <span
+            className={`theme-t inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-caption font-bold ${
+              tier ? `age-badge age-badge-${tier}` : "bg-accent text-on-accent"
+            }`}
+          >
             <BadgeIcon size={12} aria-hidden />
-            {place.badge}
+            {tier ? `업력 ${years}년` : place.badge}
           </span>
         )}
       </div>
@@ -504,17 +514,20 @@ export default function Home() {
 
   // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
   const { counts, activeFilter, places } = useMemo(() => {
-    const matches = (p: Place, key: string) =>
-      key === "all" || p.category === key || !!p.extra?.includes(key);
-    const modePlaces = all.filter((p) => p.mode === mode);
+    // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
+    const modePlaces = all.filter((p) => p.mode === mode && isVisiblePlace(p));
     const counts =
       loading || error
         ? null
         : Object.fromEntries(
-            FILTERS[mode].map((f) => [f.key, modePlaces.filter((p) => matches(p, f.key)).length]),
+            FILTERS[mode].map((f) => [f.key, modePlaces.filter((p) => matchesFilter(p, f.key)).length]),
           );
     const activeFilter = counts && !counts[filter] ? "all" : filter;
-    return { counts, activeFilter, places: modePlaces.filter((p) => matches(p, activeFilter)) };
+    return {
+      counts,
+      activeFilter,
+      places: modePlaces.filter((p) => matchesFilter(p, activeFilter)),
+    };
   }, [all, mode, filter, loading, error]);
 
   const selected = places.find((p) => p.id === selectedId) ?? null;
@@ -624,7 +637,9 @@ export default function Home() {
             장소 제보
           </button>
           <p className="mt-2 text-caption text-muted">
-            카카오 로컬 데이터 기반 · 영업시간·요금은 방문 전 확인해 주세요.
+            {mode === "nopo"
+              ? "인허가 연도로 업력 10년 이상이 확인된 가게와 이웃 제보만 보여줘요."
+              : "카카오 로컬 데이터 기반 · 영업시간·요금은 방문 전 확인해 주세요."}
           </p>
         </div>
       </main>
