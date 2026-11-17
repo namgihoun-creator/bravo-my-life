@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+/* DESIGN.md §3 — 모드별 토큰 (raw hex는 이 파일에서만 사용) */
+:root,
+:root[data-mode="survival"] {
+  --primary: #0b5fff;
+  --on-primary: #ffffff;
+  --accent: #ffd60a;
+  --on-accent: #111827;
+  --cta: #d93a0f;
+  --on-cta: #ffffff;
+  --bg: #f3f6fb;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --border: #d5ddea;
+  --tag-bg: #e6eeff;
+  --tag-text: #0847c4;
+  --focus-ring: #0b5fff;
+  --shadow-rgb: 15, 23, 42;
+}
+
+:root[data-mode="nopo"] {
+  --primary: #8a3b12;
+  --on-primary: #fff8ec;
+  --accent: #c8963e;
+  --on-accent: #2b1a0e;
+  --cta: #2f5d50;
+  --on-cta: #ffffff;
+  --bg: #faf4e8;
+  --surface: #fffdf7;
+  --text: #2b1a0e;
+  --text-muted: #6b5744;
+  --border: #e6d9c0;
+  --tag-bg: #f5e7cc;
+  --tag-text: #6e3410;
+  --focus-ring: #8a3b12;
+  --shadow-rgb: 43, 26, 14;
+}
+
+/* 공통 시맨틱 + 그림자 */
+:root {
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+
+  --shadow-card: 0 1px 2px rgba(var(--shadow-rgb), 0.06), 0 2px 8px rgba(var(--shadow-rgb), 0.06);
+  --shadow-card-pressed: 0 1px 2px rgba(var(--shadow-rgb), 0.08);
+  --shadow-sticky: 0 2px 12px rgba(var(--shadow-rgb), 0.1);
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-cta: var(--cta);
+  --color-on-cta: var(--on-cta);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border);
+  --color-tag-bg: var(--tag-bg);
+  --color-tag-text: var(--tag-text);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --shadow-card: var(--shadow-card);
+  --shadow-sticky: var(--shadow-sticky);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
+    "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+
+  /* DESIGN.md §4 타이포 위계 */
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-title1: 22px;
+  --text-title1--line-height: 30px;
+  --text-title2: 18px;
+  --text-title2--line-height: 26px;
+  --text-distance: 20px;
+  --text-distance--line-height: 24px;
+  --text-body: 15px;
+  --text-body--line-height: 24px;
+  --text-label: 14px;
+  --text-label--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+}
+
+html {
+  scroll-padding-top: 64px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background-color 200ms ease-out, color 200ms ease-out;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* 모드 전환 시 테마 컬러를 부드럽게 */
+.theme-t {
+  transition: background-color 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.sheet-up {
+  animation: sheet-up 200ms ease-out;
+}
