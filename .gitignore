@@ -46,3 +46,6 @@ data/raw/
 __pycache__/
 *.pyc
 .playwright-mcp/
+
+# Git Bash 크래시 덤프
+*.stackdump
