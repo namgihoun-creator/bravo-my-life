@@ -8,7 +8,7 @@ export interface NavTarget {
   name: string;
   lat: number;
   lng: number;
-  /** 장소 카테고리 (DB 값: parking 이면 자동차, 그 외 도보) */
+  /** 장소 카테고리 (DB 값: parking·carwash 면 자동차, 그 외 도보) */
   category?: string;
 }
 
@@ -19,9 +19,9 @@ export interface NavOrigin {
   label: string;
 }
 
-/** 공영주차장은 자동차, 그 외는 도보로 자동 선택 */
+/** 공영주차장·세차장은 자동차, 그 외는 도보로 자동 선택 */
 export function routeModeFor(category?: string): RouteMode {
-  return category === "parking" || category === "공영주차장" ? "car" : "walk";
+  return category === "parking" || category === "공영주차장" || category === "carwash" || category === "세차장" ? "car" : "walk";
 }
 
 const DEFAULT_APP_NAME = "bravo-mylife.vercel.app";

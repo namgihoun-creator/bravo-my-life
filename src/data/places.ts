@@ -23,7 +23,7 @@ export interface PlaceFeedback {
 export interface Place {
   id: string;
   mode: Mode;
-  /** 주 카테고리: laundry|print|pharmacy|parking|battery | soup|pocha|solo|general */
+  /** 주 카테고리: laundry|print|pharmacy|parking|carwash|battery|toilet | soup|pocha|solo|general */
   category: string;
   /** 추가 필터 키 (예: veteran, solo) */
   extra: string[];
@@ -50,6 +50,7 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
     { key: "pharmacy", label: "심야약국" },
     { key: "battery", label: "보조배터리" },
     { key: "parking", label: "🅿️ 공영주차장" },
+    { key: "carwash", label: "🚗 세차장" },
     { key: "toilet", label: "개방화장실" },
   ],
   nopo: [
@@ -90,6 +91,10 @@ export const FEEDBACK_CHIPS: Record<string, FeedbackChipDef[]> = {
   parking: [
     { key: "space", emoji: "🅿️", label: "빈자리 있음" },
     { key: "full", emoji: "🚫", label: "만차" },
+  ],
+  carwash: [
+    { key: "ok", emoji: "👍", label: "방금 정상이용" },
+    { key: "wait", emoji: "⏳", label: "대기 있음" },
   ],
   battery: [
     { key: "stock", emoji: "🔋", label: "재고 있음" },
@@ -196,6 +201,7 @@ export const REPORT_CATEGORIES: Record<Mode, { key: string; label: string }[]> =
     { key: "print", label: "무인프린트" },
     { key: "pharmacy", label: "심야약국" },
     { key: "parking", label: "공영주차장" },
+    { key: "carwash", label: "세차장" },
     { key: "battery", label: "보조배터리" },
     { key: "toilet", label: "개방화장실" },
   ],
@@ -315,4 +321,27 @@ export function feeEntries(p: Place): FeeEntry[] {
     .map((e) => e.slice(4))
     .map((text) => ({ text, free: text === "무료" || FREE_WINDOW.test(text) }))
     .sort((a, b) => Number(a.free) - Number(b.free));
+}
+
+/* ───────────── 세차장·화장실 이용 정보 (extra: type: / hours: / closed: / facility:) ───────────── */
+
+export interface PlaceMeta {
+  /** 세차 유형 (셀프세차·손세차·자동세차·세차장) */
+  type: string | null;
+  /** 운영·개방시간 ('24시간', '09:00~18:00', '평일 09:00~18:00') */
+  hours: string | null;
+  /** 휴무일 ('일요일·공휴일') */
+  closed: string | null;
+  /** 편의시설 (장애인화장실·기저귀교환대·비상벨) */
+  facilities: string[];
+}
+
+export function placeMeta(p: Place): PlaceMeta {
+  const get = (prefix: string) => (p.extra ?? []).find((e) => e.startsWith(prefix))?.slice(prefix.length) ?? null;
+  return {
+    type: get("type:"),
+    hours: get("hours:"),
+    closed: get("closed:"),
+    facilities: (p.extra ?? []).filter((e) => e.startsWith("facility:")).map((e) => e.slice(9)),
+  };
 }

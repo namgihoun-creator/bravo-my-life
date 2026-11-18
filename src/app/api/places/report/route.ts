@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
  */
 
 const CATEGORIES: Record<string, string[]> = {
-  survival: ["laundry", "print", "pharmacy", "parking", "battery", "toilet"],
+  survival: ["laundry", "print", "pharmacy", "parking", "carwash", "battery", "toilet"],
   nopo: ["soup", "pocha", "solo", "general"],
 };
 

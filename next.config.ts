@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // 매니페스트도 배포 직후 바로 반영되도록 캐시를 재검증한다(홈 화면 추가·설치 정보 갱신)
+        source: "/manifest.json",
+        headers: [
+          { key: "Cache-Control", value: "no-cache" },
+          { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
+        ],
+      },
+      {
         source: "/sw.js",
         headers: [
           { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },

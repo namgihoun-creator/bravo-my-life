@@ -26,6 +26,7 @@ import {
   feeEntries,
   feedbackCount,
   fieldInfo,
+  placeMeta,
   foodLabel,
   isVisiblePlace,
   matchesFilter,
@@ -238,12 +239,13 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
 }
 
 /** 0건이어도 칩을 숨기지 않는 핵심 카테고리 */
-const CORE_SURVIVAL_KEYS = ["toilet", "parking"];
+const CORE_SURVIVAL_KEYS = ["toilet", "parking", "carwash"];
 const isCoreChip = (mode: Mode, key: string) => mode === "survival" && CORE_SURVIVAL_KEYS.includes(key);
 
 const EMPTY_MESSAGE: Record<string, string> = {
   toilet: "반경 내 등록된 개방화장실이 없어요. 지도를 넓혀 다시 찾아보세요",
   parking: "반경 내 등록된 공영주차장이 없어요. 지도를 넓혀 다시 찾아보세요",
+  carwash: "반경 내 등록된 세차장이 없어요. 지도를 넓혀 다시 찾아보세요",
 };
 
 function FilterChips({
@@ -449,6 +451,8 @@ function PlaceCard({
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
   const fees = place.category === "parking" ? feeEntries(place) : []; // 주차 요금·무료 개방
+  const meta = placeMeta(place);
+  const showMeta = place.category === "carwash" || place.category === "toilet";
   const fav = !!useFavorites()[place.id];
   const info = fieldInfo(place);
   const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime || !!info.tip;
@@ -499,6 +503,29 @@ function PlaceCard({
               }`}
             >
               {f.free ? (f.text === "무료" ? "무료 주차장" : f.text) : `요금 ${f.text}`}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showMeta && ((meta.type && meta.type !== "세차장") || meta.hours || meta.closed || meta.facilities.length > 0) && (
+        <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="이용 정보">
+          {meta.type && meta.type !== "세차장" && place.category === "carwash" && (
+            <li className="rounded-lg bg-accent px-2.5 py-1 text-label font-bold text-on-accent">{meta.type}</li>
+          )}
+          {meta.hours && (
+            <li className="tnum rounded-lg border border-line bg-bg px-2.5 py-1 text-label font-bold text-ink">
+              {place.category === "toilet" ? "개방" : "운영"} {meta.hours}
+            </li>
+          )}
+          {meta.closed && info.closedDays.length === 0 && (
+            <li className="rounded-lg border border-danger px-2.5 py-1 text-label font-bold text-danger">
+              휴무 {meta.closed}
+            </li>
+          )}
+          {meta.facilities.map((f) => (
+            <li key={f} className="rounded-lg border border-line px-2.5 py-1 text-label font-semibold text-muted">
+              {f}
             </li>
           ))}
         </ul>
