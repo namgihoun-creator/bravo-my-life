@@ -1,6 +1,6 @@
 {
   "name": "브라보 마이 라이프",
-  "short_name": "브라보",
+  "short_name": "브라보 마이 라이프",
   "description": "내 손안의 동네 생존 & 찐노포 가이드",
   "lang": "ko",
   "id": "/",
@@ -8,6 +8,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
+  "dir": "ltr",
+  "categories": ["navigation", "lifestyle", "food"],
   "background_color": "#F3F6FB",
   "theme_color": "#0B5FFF",
   "icons": [

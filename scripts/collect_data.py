@@ -139,10 +139,10 @@ SUMMARY = {
 }
 
 
-def kakao_search(query: str, lat: float, lng: float, group: str | None = None) -> list[dict]:
+def kakao_search(query: str, lat: float, lng: float, group: str | None = None, radius: int | None = None) -> list[dict]:
     out: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
-        params = {"query": query, "x": lng, "y": lat, "radius": RADIUS_M, "size": 15, "page": page, "sort": "distance"}
+        params = {"query": query, "x": lng, "y": lat, "radius": radius or RADIUS_M, "size": 15, "page": page, "sort": "distance"}
         if group:
             params["category_group_code"] = group
         for attempt in range(3):
@@ -175,6 +175,13 @@ def survival_row(doc: dict, category: str, query: str) -> dict | None:
         "toilet": ("화장실",),
     }[category]
     if not any(k in name or k in cat_name for k in must):
+        return None
+    # 카테고리 우선순위 보호:
+    #  - 상호에 '화장실'이 있으면 그 장소는 화장실이다('○○공영주차장 개방화장실'은 주차장 안의 화장실). 주차장으로 분류하지 않는다.
+    #  - 화장실 키워드 검색에서 주차장 자체(PK6, 상호에 '주차'만 있고 '화장실' 없음)는 절대 toilet 이 되지 않는다.
+    if category == "parking" and "화장실" in name:
+        return None
+    if category == "toilet" and "화장실" not in name and (doc.get("category_group_code") == "PK6" or "주차" in name):
         return None
     if category == "parking" and "거주자" in name:
         return None  # 거주자우선주차장은 일반 이용 불가 → 영구 제외
@@ -294,26 +301,46 @@ def collect(hubs: dict[str, tuple[float, float]], only: set[str] | None = None) 
     return rows
 
 
+TOILET_DENSE_QUERIES = ["공중화장실", "개방화장실", "공공화장실", "공원 화장실", "지하철역 화장실"]
+# 거점 중심 + 6방향(약 1.2km) 보조 중심 → 반경 1km 검색으로 카카오 키워드 검색의 45건 한도를 우회해 촘촘히 수집
+RING = [(0, 0), (0.011, 0), (-0.011, 0), (0.0055, 0.0145), (0.0055, -0.0145), (-0.0055, 0.0145), (-0.0055, -0.0145)]
+
+
+def collect_dense_toilets(hubs: dict[str, tuple[float, float]], rows: dict[str, dict]) -> None:
+    for hub, (lat, lng) in hubs.items():
+        n = 0
+        for dlat, dlng in RING:
+            for query in TOILET_DENSE_QUERIES:
+                for d in kakao_search(query, lat + dlat, lng + dlng, radius=1000):
+                    row = survival_row(d, "toilet", query)
+                    if row and row["kakao_id"] not in rows:
+                        rows[row["kakao_id"]] = row
+                        n += 1
+        print(f"[{hub}] 화장실 밀집 수집 신규 {n}")
+
+
 def upsert(rows: list[dict]) -> None:
     from supabase import create_client
 
     client = create_client(SUPABASE_URL, SERVICE_KEY)
-    # 노포는 enrich_nopo.py 가 갱신한 요약·태그를 덮어쓰지 않도록 이미 있는 행은 건너뛴다.
+    # 이미 있는 행은 건너뛴다(insert-only): enrich_*.py 가 채운 요약·태그·요금(fee:)·업력과
+    # 다른 카테고리(parking)로 확정된 행을 재수집이 덮어쓰지 못하게 한다.
     groups = [
-        ([r for r in rows if r["mode"] == "survival"], False),
+        ([r for r in rows if r["mode"] == "survival"], True),
         ([r for r in rows if r["mode"] == "nopo"], True),
     ]
     for group, ignore_dup in groups:
         for i in range(0, len(group), 200):
             chunk = group[i : i + 200]
             client.table("bml_places").upsert(chunk, on_conflict="kakao_id", ignore_duplicates=ignore_dup).execute()
-            print(f"  upsert {'nopo' if ignore_dup else 'survival'} {i + len(chunk)}/{len(group)}")
+            print(f"  upsert {group[0]['mode']} {i + len(chunk)}/{len(group)}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="DB에 쓰지 않고 JSON 파일로만 저장")
     ap.add_argument("--hubs", nargs="*", help="수집할 거점 이름 (기본: 전체)")
+    ap.add_argument("--dense-toilets", action="store_true", help="거점 주변 6방향 보조 중심까지 화장실을 촘촘히 수집")
     ap.add_argument("--categories", nargs="*", help="수집할 카테고리만 (예: toilet battery nopo). 기본: 전체")
     args = ap.parse_args()
 
@@ -325,7 +352,10 @@ def main() -> int:
         print(f"알 수 없는 거점. 사용 가능: {', '.join(HUBS)}", file=sys.stderr)
         return 1
 
-    rows = list(collect(hubs, set(args.categories) if args.categories else None).values())
+    collected = collect(hubs, set(args.categories) if args.categories else None)
+    if args.dense_toilets:
+        collect_dense_toilets(hubs, collected)
+    rows = list(collected.values())
     surv = sum(r["mode"] == "survival" for r in rows)
     print(f"\n총 {len(rows)}건 (생존 {surv} / 노포 {len(rows) - surv})")
 

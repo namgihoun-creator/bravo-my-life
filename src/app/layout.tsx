@@ -4,14 +4,14 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ToastHost from "@/components/ToastHost";
 
 export const metadata: Metadata = {
-  title: "Bravo My Life",
+  title: "브라보 마이 라이프",
   description: "내 손안의 동네 생존 & 찐노포 가이드",
   applicationName: "브라보 마이 라이프",
   manifest: "/manifest.json",
   // iOS '홈 화면에 추가' 시 주소창 없이 전체 화면으로 열림
   appleWebApp: {
     capable: true,
-    title: "브라보",
+    title: "브라보 마이 라이프",
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },
@@ -21,6 +21,7 @@ export const metadata: Metadata = {
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/icons/icon-192.png"],
   },
 };
 
