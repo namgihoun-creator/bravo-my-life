@@ -48,6 +48,7 @@ import { pushFavorite, pushVisited, useCouple } from "@/lib/couple";
 import { cleanNote, NOTE_MAX, removeVisited, setVisited, useVisited } from "@/lib/visited";
 import CoupleSheet from "@/components/CoupleSheet";
 import HScroll from "@/components/HScroll";
+import AddressLine from "@/components/AddressLine";
 import { getOpenState } from "@/lib/openStatus";
 import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
@@ -567,6 +568,8 @@ function PlaceCard({
           · {dist >= 1000 ? `${(dist / 1000).toFixed(1)}km` : `${dist}m`}
         </span>
       </p>
+
+      {place.mode === "nopo" && place.address && <AddressLine address={place.address} />}
 
       {fees.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="주차 요금">

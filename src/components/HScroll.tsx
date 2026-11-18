@@ -30,6 +30,7 @@ export default function HScroll({
   const ownRef = useRef<HTMLDivElement | null>(null);
   const elRef = scrollRef ?? ownRef;
   const [edge, setEdge] = useState({ left: false, right: false });
+  const edgeRef = useRef({ left: false, right: false });
   const drag = useRef({ down: false, moved: false, startX: 0, startLeft: 0, id: -1 });
 
   // 칩이 늘고 줄거나(필터 변경) 화면 폭이 바뀌면 양끝에 더 갈 칩이 있는지 다시 잰다
@@ -39,7 +40,10 @@ export default function HScroll({
     const measure = () => {
       const left = el.scrollLeft > 2;
       const right = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
-      setEdge((p) => (p.left === left && p.right === right ? p : { left, right }));
+      const cur = edgeRef.current;
+      if (cur.left === left && cur.right === right) return; // 값이 같으면 상태를 건드리지 않는다(재렌더→옵저버 재등록→재측정 무한 루프 방지)
+      edgeRef.current = { left, right };
+      setEdge({ left, right });
     };
     measure();
     el.addEventListener("scroll", measure, { passive: true });

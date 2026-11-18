@@ -71,3 +71,4 @@
 - **길찾기 분할 버튼:** 구분선은 `::before` 1×20px 중앙 반투명 선(카카오·네이버 `rgba(0,0,0,.15)`, 티맵 `rgba(255,255,255,.25)`), 앱 배지는 어두운 원+밝은 글자, 카드 피드백 칩에 이모지를 쓰지 않는다(`CategoryIcon` 라인 아이콘).
 - **가로 스크롤 칩 바(`HScroll`):** 가로로 넘치는 칩 컨테이너는 공용 `src/components/HScroll.tsx`를 쓴다. PC 마우스용 휠(세로→가로, 끝에서는 페이지 스크롤에 양보)·드래그 스크롤(5px 이상이면 칩 클릭 차단)·`<` `>` 화살표(`hover: hover` + `pointer: fine`에서만, 터치·320px에서는 숨김)를 제공하고 터치 스와이프는 그대로 둔다. React Compiler 린트 때문에 ref는 `scrollRef` 프롭으로 넘기고 `useCallback`을 쓰지 않는다. 새 CSS 변수/클래스(`.hscroll*`)를 바꾼 뒤 dev 서버가 반영하지 않으면 서버를 재시작해 확인한다(DESIGN.md §26).
 - **OG 썸네일:** public/og-image.png(1200×630)와 layout.tsx의 openGraph/	witter 메타(metadataBase https://bravo-mylife.vercel.app)로 링크 미리보기를 제공한다. 사양은 DESIGN.md §27.
+- **노포 카드 주소:** 찐노포 카드는 AddressLine(MapPin + 2줄 말줄임, 탭하면 복사 + 복사됨)으로 주소를 보여 준다(DESIGN.md §28). 상태 갱신이 옵저버를 다시 등록하는 effect(HScroll)는 값이 같으면 setState를 부르지 않는다(무한 재렌더 방지).
