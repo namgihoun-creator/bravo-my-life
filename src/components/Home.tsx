@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import {
   Award,
   ChevronDown,
+  HeartHandshake,
   Heart,
   LocateFixed,
   MapPin,
@@ -41,6 +42,9 @@ import {
   type PlaceFeedback,
 } from "@/data/places";
 import { toggleFavorite, useFavorites } from "@/lib/favorites";
+import { pushFavorite, pushVisited, useCouple } from "@/lib/couple";
+import { cleanNote, NOTE_MAX, removeVisited, setVisited, useVisited } from "@/lib/visited";
+import CoupleSheet from "@/components/CoupleSheet";
 import { getOpenState } from "@/lib/openStatus";
 import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
@@ -85,18 +89,18 @@ function LocationBadge({ loc, onClick }: { loc: Loc; onClick: () => void }) {
   const label =
     loc.kind === "pending" ? "위치 확인 중…" : loc.kind === "gps" ? "현재 위치 (GPS)" : loc.name;
   const Icon = loc.kind === "gps" ? LocateFixed : MapPin;
+  // 440px 미만에서는 아이콘만(44×44) 보여 제목·돋보기·커플 버튼과 한 줄에 겹침 없이 들어가게 한다. 이름은 aria-label/title 로 유지.
   return (
     <button
       onClick={onClick}
       aria-label={`동네 설정, 현재 ${label}`}
+      title={label}
       aria-haspopup="dialog"
-      className="theme-t inline-flex min-h-[44px] min-w-0 max-w-[180px] shrink-0 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption max-[359px]:max-w-[148px] max-[359px]:pl-2.5 max-[359px]:pr-1.5 font-semibold text-primary"
+      className="theme-t inline-flex min-h-[44px] min-w-0 max-w-[180px] shrink-0 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption font-semibold text-primary max-[439px]:w-11 max-[439px]:justify-center max-[439px]:gap-0 max-[439px]:px-0"
     >
-      <Icon size={14} className="shrink-0" aria-hidden />
-      <span className="truncate">
-        {loc.kind === "gps" ? "현재 위치" : label}
-      </span>
-      <ChevronDown size={14} className="shrink-0 max-[359px]:hidden" aria-hidden />
+      <Icon size={14} className="shrink-0 max-[439px]:size-[18px]" aria-hidden />
+      <span className="truncate max-[439px]:hidden">{loc.kind === "gps" ? "현재 위치" : label}</span>
+      <ChevronDown size={14} className="shrink-0 max-[439px]:hidden" aria-hidden />
     </button>
   );
 }
@@ -322,6 +326,7 @@ function FilterChips({
   value,
   counts,
   favCount,
+  visitedCount,
   onChange,
   showOpenChip,
   openOnly,
@@ -333,6 +338,8 @@ function FilterChips({
   counts: Record<string, number> | null;
   /** 이 모드에서 찜한 장소 수 (1 이상이면 '찜 N') */
   favCount: number;
+  /** 이 모드에서 '다녀옴' 체크인한 장소 수 (1 이상일 때만 칩을 보인다) */
+  visitedCount: number;
   onChange: (k: string) => void;
   /** 영업시간이 확인된 장소가 있을 때만 '지금 영업 중' 칩을 보여준다 */
   showOpenChip: boolean;
@@ -384,7 +391,15 @@ function FilterChips({
     ),
   );
   // 순서: 전체 · 찜 · 지금 영업 중 · 카테고리/연차
-  if (showOpenChip) items.splice(Math.min(2, items.length), 0, openChip);
+  // 순서: 전체 · 찜 · (다녀옴) · (지금 영업 중) · 카테고리/연차/업종
+  if (visitedCount > 0) {
+    items.splice(
+      Math.min(2, items.length),
+      0,
+      chip("visited", value === "visited", () => onChange("visited"), `다녀옴 ${visitedCount}`),
+    );
+  }
+  if (showOpenChip) items.splice(Math.min(visitedCount > 0 ? 3 : 2, items.length), 0, openChip);
 
   return (
     <div
@@ -500,6 +515,9 @@ function PlaceCard({
   const meta = placeMeta(place);
   const showMeta = place.category === "carwash" || place.category === "toilet";
   const fav = !!useFavorites()[place.id];
+  const visitedEntry = useVisited()[place.id];
+  const [editing, setEditing] = useState(false); // 한 줄 메모 입력·수정 영역
+  const [draft, setDraft] = useState("");
   const info = fieldInfo(place);
   const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime || !!info.tip;
   const statusRow = !!open?.status || !!open?.reason;
@@ -648,6 +666,28 @@ function PlaceCard({
           />
         ))}
         <button
+          onClick={() => {
+            if (visitedEntry) {
+              removeVisited(place.id);
+              void pushVisited(place.id, false, null);
+              setEditing(false);
+              showToast("다녀옴을 취소했어요.");
+            } else {
+              setVisited(place, null);
+              void pushVisited(place.id, true, null);
+              setDraft("");
+              setEditing(true); // 체크인과 함께 한 줄 메모 입력창을 연다
+            }
+          }}
+          aria-pressed={!!visitedEntry}
+          className={`theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-caption font-semibold active:opacity-80 ${
+            visitedEntry ? "border-success bg-surface text-success" : "border-line bg-surface text-ink"
+          }`}
+        >
+          <CategoryIcon k="visited" fill={!!visitedEntry} />
+          다녀옴
+        </button>
+        <button
           onClick={() => onAddTip(place)}
           className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border border-dashed border-primary px-3 text-caption font-semibold text-primary active:opacity-80"
         >
@@ -665,6 +705,75 @@ function PlaceCard({
         )}
       </div>
 
+      {visitedEntry &&
+        (editing ? (
+          <form
+            className="mt-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = cleanNote(draft);
+              setVisited(place, n);
+              void pushVisited(place.id, true, n);
+              setEditing(false);
+            }}
+          >
+            <label className="block text-caption font-semibold text-muted" htmlFor={`note-${place.id}`}>
+              다녀온 곳 한 줄 메모
+            </label>
+            <input
+              id={`note-${place.id}`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.slice(0, NOTE_MAX))}
+              maxLength={NOTE_MAX}
+              placeholder="예: 재방문 의사, 수육 추천"
+              autoComplete="off"
+              className="mt-1 h-11 w-full min-w-0 rounded-xl border border-line bg-bg px-3 text-[14px] text-ink placeholder:text-muted"
+            />
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                className="min-h-[44px] cursor-pointer whitespace-nowrap rounded-xl bg-primary px-4 text-label font-bold text-on-primary active:opacity-90"
+              >
+                저장
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setVisited(place, null);
+                  void pushVisited(place.id, true, null);
+                  setDraft("");
+                  setEditing(false);
+                }}
+                className="min-h-[44px] cursor-pointer whitespace-nowrap rounded-xl border border-line bg-surface px-4 text-label font-semibold text-ink active:opacity-80"
+              >
+                메모 삭제
+              </button>
+              <span className="tnum ml-auto text-caption text-muted">
+                {draft.length}/{NOTE_MAX}
+              </span>
+            </div>
+          </form>
+        ) : (
+          <button
+            onClick={() => {
+              setDraft(visitedEntry.note ?? "");
+              setEditing(true);
+            }}
+            aria-label="다녀온 곳 메모 수정"
+            className="mt-2 flex min-h-[44px] w-full cursor-pointer items-center gap-1.5 rounded-xl border border-success bg-surface px-3 text-left text-label font-semibold text-success active:opacity-80"
+          >
+            <CategoryIcon k="visited" fill />
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              다녀온 곳
+              {visitedEntry.note ? (
+                <span className="font-medium text-ink"> · {visitedEntry.note}</span>
+              ) : (
+                <span className="font-medium text-muted"> · 메모 남기기</span>
+              )}
+            </span>
+          </button>
+        ))}
+
       <div className="mt-3 flex gap-2">
         <NavigationButton
           target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }}
@@ -679,7 +788,10 @@ function PlaceCard({
           <span className="text-caption font-semibold">공유</span>
         </button>
         <button
-          onClick={() => toggleFavorite(place)}
+          onClick={() => {
+            const on = toggleFavorite(place);
+            void pushFavorite(place.id, on);
+          }}
           aria-pressed={fav}
           aria-label={fav ? `${place.name} 찜 해제` : `${place.name} 찜하기`}
           className={`theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border bg-surface active:opacity-80 ${
@@ -739,6 +851,9 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
   const [openOnly, setOpenOnly] = useState(false); // '지금 영업 중 / 이용 가능(24시)' 필터
   const [searchOpen, setSearchOpen] = useState(false); // 빠른 키워드 검색 바 펼침
+  const [coupleOpen, setCoupleOpen] = useState(false); // 커플 코드 시트
+  const couple = useCouple();
+  const visited = useVisited();
   const [query, setQuery] = useState(""); // 빠른 키워드 검색어
   const searchRef = useRef<HTMLInputElement>(null);
   const q = query.trim();
@@ -970,24 +1085,28 @@ export default function Home() {
   );
   const openActive = openOnly && hasKnownHours;
   const clock = openActive ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
-  const { counts, favCount, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
+  const { counts, favCount, visitedCount, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
     // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
     const base = all.filter((p) => p.mode === mode && isVisiblePlace(p));
     // 찜 목록: 기기에 저장된 스냅샷이라 오프라인·다른 동네에서도 보인다. 조회된 최신 정보가 있으면 그것을 쓰고,
     // 없으면 스냅샷의 거리를 현재 기준 위치로 다시 계산한다.
     const fresh = new Map(all.map((p) => [p.id, p]));
-    const favBase = Object.values(favorites)
-      .filter((p) => p.mode === mode)
-      .map(
-        (p) =>
-          fresh.get(p.id) ??
-          (centerPoint ? { ...p, distance_m: distanceM(centerPoint.lat, centerPoint.lng, p.lat, p.lng) } : p),
-      )
-      .sort((a, b) => a.distance_m - b.distance_m);
+    const toBase = (list: Place[]) =>
+      list
+        .filter((p) => p.mode === mode)
+        .map(
+          (p) =>
+            fresh.get(p.id) ??
+            (centerPoint ? { ...p, distance_m: distanceM(centerPoint.lat, centerPoint.lng, p.lat, p.lng) } : p),
+        )
+        .sort((a, b) => a.distance_m - b.distance_m);
+    const favBase = toBase(Object.values(favorites));
+    const visitedBase = toBase(Object.values(visited).map((v) => v.place)); // '다녀옴' 체크인 장소
     // '지금 영업 중'이 켜지면 확실히 이용 가능(true)한 곳만 남긴다. 모르는 곳(null)은 허위 표시 없이 제외한다.
     const isOpen = (p: Place) => getOpenState(p, clock).status === true;
     const pool = openActive ? base.filter(isOpen) : base;
     const favPool = openActive ? favBase.filter(isOpen) : favBase;
+    const visitedPool = openActive ? visitedBase.filter(isOpen) : visitedBase;
     const counts: Record<string, number> | null =
       loading || error
         ? null
@@ -996,24 +1115,39 @@ export default function Home() {
               FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
             ),
             fav: favBase.length,
+            visited: visitedBase.length,
           };
     // 찜 칩은 0건이어도 누르면 그대로 활성(빈 안내 표시) — '전체'가 같이 켜진 것처럼 보이지 않게 한다
-    const activeFilter = filter === "fav" ? "fav" : counts && !counts[filter] && !isCoreChip(mode, filter) ? "all" : filter;
+    // '다녀옴' 칩은 1곳 이상일 때만 보이므로, 0곳이 되면 '전체'로 돌린다
+    const activeFilter =
+      filter === "fav"
+        ? "fav"
+        : filter === "visited"
+          ? visitedBase.length > 0
+            ? "visited"
+            : "all"
+          : counts && !counts[filter] && !isCoreChip(mode, filter)
+            ? "all"
+            : filter;
     const unknownExcluded = openActive
-      ? (activeFilter === "fav" ? favBase : base).filter(
+      ? (activeFilter === "fav" ? favBase : activeFilter === "visited" ? visitedBase : base).filter(
           (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
         ).length
       : 0;
     return {
       counts,
       favCount: favBase.length,
+      visitedCount: visitedBase.length,
       activeFilter,
-      rawPlaces: (activeFilter === "fav" ? favPool : pool.filter((p) => matchesFilter(p, activeFilter))).filter((p) =>
-        matchesQuery(p, q),
-      ),
+      rawPlaces: (activeFilter === "fav"
+        ? favPool
+        : activeFilter === "visited"
+          ? visitedPool
+          : pool.filter((p) => matchesFilter(p, activeFilter))
+      ).filter((p) => matchesQuery(p, q)),
       unknownExcluded,
     };
-  }, [all, mode, filter, loading, error, openActive, clock, favorites, centerPoint, q]);
+  }, [all, mode, filter, loading, error, openActive, clock, favorites, visited, centerPoint, q]);
 
   // 분 단위 갱신으로 목록 내용이 그대로인데 배열만 새로 만들어져 지도가 다시 맞춰지지 않도록 id 기준으로 참조를 유지한다
   const placesKey = rawPlaces.map((p) => p.id).join("|");
@@ -1059,6 +1193,18 @@ export default function Home() {
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <LocationBadge loc={loc} onClick={() => setSheetOpen(true)} />
+            <button
+              type="button"
+              onClick={() => setCoupleOpen(true)}
+              aria-label={couple.code ? `커플 코드 연동 중, 코드 ${couple.code}` : "커플 코드 연동"}
+              aria-haspopup="dialog"
+              className="theme-t relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-surface text-primary"
+            >
+              <HeartHandshake size={18} strokeWidth={2} aria-hidden />
+              {couple.code && (
+                <span aria-hidden className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success" />
+              )}
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -1154,6 +1300,7 @@ export default function Home() {
             value={openActive ? "open-now" : activeFilter}
             counts={counts}
             favCount={favCount}
+            visitedCount={visitedCount}
             onChange={changeFilter}
             showOpenChip={hasKnownHours}
             openOnly={openActive}
@@ -1190,7 +1337,7 @@ export default function Home() {
         className="space-y-3 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4"
         aria-busy={loading}
       >
-        {loading && activeFilter !== "fav" ? (
+        {loading && activeFilter !== "fav" && activeFilter !== "visited" ? (
           view === "map" ? (
             <div className="h-[calc(100dvh-250px)] min-h-[380px] animate-pulse rounded-2xl bg-tag-bg" aria-hidden />
           ) : (
@@ -1199,7 +1346,7 @@ export default function Home() {
               <SkeletonCard />
             </>
           )
-        ) : error && activeFilter !== "fav" ? (
+        ) : error && activeFilter !== "fav" && activeFilter !== "visited" ? (
           <div className="py-12 text-center">
             <p className="text-body text-ink">데이터를 불러오지 못했어요.</p>
             <button
@@ -1326,6 +1473,8 @@ export default function Home() {
         </div>
       </main>
 
+
+      {coupleOpen && <CoupleSheet onClose={() => setCoupleOpen(false)} />}
 
       {tipTarget && (
         <FieldTipSheet

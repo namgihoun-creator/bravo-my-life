@@ -5,6 +5,7 @@ import {
   Beer,
   Car,
   ChefHat,
+  CircleCheck,
   Clock3,
   CookingPot,
   Drumstick,
@@ -36,6 +37,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   all: LayoutGrid,
   fav: Heart,
   "open-now": Clock3,
+  visited: CircleCheck,
   // 긴급 생존 모드
   laundry: WashingMachine,
   print: Printer,

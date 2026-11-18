@@ -46,10 +46,12 @@ export function useFavorites(): Favorites {
   return useSyncExternalStore(subscribe, load, () => EMPTY);
 }
 
-export function toggleFavorite(place: Place) {
-  const next = { ...load() };
-  if (next[place.id]) delete next[place.id];
-  else next[place.id] = place;
+/** 현재 찜 목록(스토어 밖에서 읽을 때) */
+export function getFavorites(): Favorites {
+  return typeof window === "undefined" ? EMPTY : load();
+}
+
+function save(next: Favorites) {
   cache = next; // 저장에 실패해도(사생활 보호 모드 등) 이 세션에서는 유지
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
@@ -57,4 +59,21 @@ export function toggleFavorite(place: Place) {
     /* 저장 불가: 메모리 값으로만 유지 */
   }
   window.dispatchEvent(new Event(EVENT));
+}
+
+/** 찜을 직접 켜고 끈다. 이미 그 상태면 아무것도 하지 않는다(커플 동기화의 반영·중복 이벤트용). */
+export function setFavorite(place: Place, on: boolean) {
+  const cur = load();
+  if (on === !!cur[place.id]) return;
+  const next = { ...cur };
+  if (on) next[place.id] = place;
+  else delete next[place.id];
+  save(next);
+}
+
+/** 찜을 뒤집고, 바뀐 뒤의 상태(true = 찜)를 돌려준다. */
+export function toggleFavorite(place: Place): boolean {
+  const on = !load()[place.id];
+  setFavorite(place, on);
+  return on;
 }
