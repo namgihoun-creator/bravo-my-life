@@ -87,7 +87,7 @@ function LocationBadge({ loc, onClick }: { loc: Loc; onClick: () => void }) {
       onClick={onClick}
       aria-label={`동네 설정, 현재 ${label}`}
       aria-haspopup="dialog"
-      className="theme-t inline-flex min-h-[44px] max-w-[180px] cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption font-semibold text-primary"
+      className="theme-t inline-flex min-h-[44px] max-w-[180px] shrink cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption max-[359px]:max-w-[148px] max-[359px]:pl-2.5 max-[359px]:pr-1.5 font-semibold text-primary"
     >
       <Icon size={14} className="shrink-0" aria-hidden />
       <span className="truncate">{label}</span>
@@ -195,7 +195,7 @@ function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void 
             role="tab"
             aria-selected={active}
             onClick={() => onChange(key)}
-            className={`theme-t flex min-h-[44px] cursor-pointer items-center justify-center gap-1.5 rounded-[10px] px-2 text-label font-bold ${
+            className={`theme-t flex min-h-[44px] min-w-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] px-2 text-label font-bold max-[359px]:gap-1 max-[359px]:px-1 max-[359px]:text-[13px] ${
               active ? "bg-primary text-on-primary" : "bg-transparent text-muted"
             }`}
           >
@@ -467,7 +467,7 @@ function PlaceCard({
       } ${highlighted ? "ring-2 ring-primary" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 className="text-title2 font-bold tracking-[-0.02em] text-ink">{place.name}</h2>
+        <h2 className="min-w-0 text-title2 font-bold tracking-[-0.02em] text-ink [overflow-wrap:anywhere]">{place.name}</h2>
         {place.badge && (
           <span
             className={`theme-t inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-caption font-bold ${
@@ -928,12 +928,12 @@ export default function Home() {
       : { lat: loc.lat, lng: loc.lng, name: loc.kind === "gps" ? "현재 위치" : loc.name };
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md">
+    <div className="mx-auto min-h-dvh w-full max-w-md overflow-x-clip md:max-w-2xl">
       <InstallBar />
       <header className="px-4 pt-[max(20px,env(safe-area-inset-top))]">
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <h1 className="text-title1 font-extrabold tracking-[-0.03em] text-primary theme-t">
+          <div className="min-w-0">
+            <h1 className="theme-t text-title1 font-extrabold tracking-[-0.03em] text-primary max-[359px]:text-[22px] max-[339px]:text-[20px]">
               Bravo My Life
             </h1>
             <p className="mt-0.5 text-label text-muted">내 손안의 동네 생존 &amp; 찐노포 가이드</p>

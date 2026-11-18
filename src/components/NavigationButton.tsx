@@ -135,10 +135,14 @@ export default function NavigationButton({ target, origin }: { target: NavTarget
       <div className={`nav-btn nav-btn-${app} theme-t flex h-12 min-w-0 flex-1 overflow-hidden rounded-xl`}>
         <button
           onClick={() => openNavigation(app, target, origin)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 text-label font-bold active:opacity-90"
+          aria-label={label}
+          className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 text-label font-bold active:opacity-90 max-[359px]:gap-1.5"
         >
           <AppDot app={app} />
-          <span className="truncate">{label}</span>
+          {/* 360px 미만(폴드 커버 화면)에서는 앱 이름을 빼 '길찾기'가 잘리지 않게 한다(앱은 왼쪽 점으로 구분) */}
+          <span className="truncate" aria-hidden>
+            <span className="max-[359px]:hidden">{meta(app).label} </span>길찾기
+          </span>
         </button>
         <button
           onClick={() => setOpen(true)}
