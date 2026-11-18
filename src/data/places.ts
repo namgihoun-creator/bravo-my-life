@@ -49,8 +49,8 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
     { key: "print", label: "무인프린트" },
     { key: "pharmacy", label: "심야약국" },
     { key: "battery", label: "보조배터리" },
-    { key: "parking", label: "🅿️ 공영주차장" },
-    { key: "carwash", label: "🚗 세차장" },
+    { key: "parking", label: "공영주차장" },
+    { key: "carwash", label: "세차장" },
     { key: "toilet", label: "개방화장실" },
   ],
   nopo: [

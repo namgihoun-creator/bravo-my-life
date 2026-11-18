@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import {
   Award,
   ChevronDown,
-  Clock3,
   Heart,
   LocateFixed,
   MapPin,
@@ -45,6 +44,7 @@ import { readNearby, saveNearby } from "@/lib/placeCache";
 import { getSupabase } from "@/lib/supabase";
 import { useMinuteClock } from "@/lib/useMinuteClock";
 import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
+import CategoryIcon from "@/components/CategoryIcon";
 import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
@@ -288,61 +288,33 @@ function FilterChips({
   );
   const openLabel = mode === "survival" ? "지금 이용 가능(24시)" : "지금 영업 중";
 
-  const openChip = (
+  // 모든 칩이 같은 버튼 규격(아이콘 14px + gap-1.5 + 텍스트, 활성 시 currentColor 상속)을 쓴다
+  const chip = (key: string, active: boolean, onClick: () => void, label: string, fill = false) => (
     <button
-      key="open-now"
+      key={key}
       data-filter-chip
-      aria-pressed={openOnly}
-      onClick={onToggleOpen}
+      aria-pressed={active}
+      onClick={onClick}
       className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
-        openOnly ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
+        active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
       }`}
     >
-      <span
-        aria-hidden
-        className={`h-2 w-2 rounded-full ${openOnly ? "bg-accent" : "bg-success"}`}
-      />
-      {openLabel}
+      <CategoryIcon k={key} fill={fill} />
+      {label}
     </button>
   );
 
-  const items = chips.map((f) => {
-    const active = f.key === value;
-    if (f.key === "fav") {
-      return (
-        <button
-          key={f.key}
-          data-filter-chip
-          aria-pressed={active}
-          onClick={() => onChange(f.key)}
-          className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
-            active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
-          }`}
-        >
-          <Heart
-            size={14}
-            aria-hidden
-            fill={favCount > 0 ? "currentColor" : "none"}
-            className={active ? "" : favCount > 0 ? "text-danger" : ""}
-          />
-          {favCount > 0 ? `찜 ${favCount}` : "찜"}
-        </button>
-      );
-    }
-    return (
-      <button
-        key={f.key}
-        data-filter-chip
-        aria-pressed={active}
-        onClick={() => onChange(f.key)}
-        className={`theme-t min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-4 text-label font-semibold ${
-          active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
-        }`}
-      >
-        {f.label}
-      </button>
-    );
-  });
+  const openChip = chip("open-now", openOnly, onToggleOpen, openLabel);
+
+  const items = chips.map((f) =>
+    chip(
+      f.key,
+      f.key === value,
+      () => onChange(f.key),
+      f.key === "fav" ? (favCount > 0 ? `찜 ${favCount}` : "찜") : f.label,
+      f.key === "fav" && favCount > 0,
+    ),
+  );
   // 순서: 전체 · 찜 · 지금 영업 중 · 카테고리/연차
   if (showOpenChip) items.splice(Math.min(2, items.length), 0, openChip);
 
@@ -447,7 +419,6 @@ function PlaceCard({
   const isSurvival = place.mode === "survival";
   const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
   const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
-  const BadgeIcon = isSurvival ? Clock3 : Award;
   const dist = Math.round(place.distance_m);
   const chips = FEEDBACK_CHIPS[place.category] ?? [];
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
@@ -474,7 +445,7 @@ function PlaceCard({
               tier ? `age-badge age-badge-${tier}` : "bg-accent text-on-accent"
             }`}
           >
-            <BadgeIcon size={12} aria-hidden />
+            {isSurvival ? <CategoryIcon k={place.category} size={12} /> : <Award size={12} strokeWidth={2} aria-hidden />}
             {tier ? `업력 ${years}년` : place.badge}
           </span>
         )}

@@ -291,3 +291,10 @@
 - **가로 넘침 0:** `html`/`body`/앱 래퍼에 `max-width:100%` + `overflow-x: clip`(`hidden`은 body를 스크롤 컨테이너로 만들어 sticky 필터 바를 깨뜨리므로 쓰지 않는다). 전역 클립은 안전망일 뿐, 원인은 요소에서 해결한다(예: 카드 제목 `min-w-0 [overflow-wrap:anywhere]`로 긴 상호가 `업력` 배지를 카드 밖으로 밀지 못하게).
 - **360px 미만(`max-[359px]:`):** 설치 바 패딩 `px-2.5`·문구 12px·`닫기` 12px/패딩 6px·`추가` 12px/패딩 12px; 제목 22px(`max-[339px]` 20px)·위치 버튼 `max-w-[148px]`·패딩 축소; 모드 탭 13px·패딩 4px(`whitespace-nowrap`); 길찾기 버튼은 앱 이름을 빼고 `길찾기`만(앱은 왼쪽 점으로 구분, `aria-label`은 전체 유지). 터치 영역 44px 이상은 모든 폭에서 유지.
 - **검증 기준:** 320×844 / 344×882 / 768×904에서 `scrollWidth <= innerWidth`, 컨테이너 밖으로 나가는 요소 0, 카드 하단 버튼 줄(길찾기+공유+찜) 잘림·찌그러짐 0.
+
+## 19. 카테고리·필터 칩 아이콘 통일
+- **단일 매핑:** `src/components/CategoryIcon.tsx`의 `CATEGORY_ICONS`(키 = 필터 key / DB category)만 쓴다. 칩·카드 배지·지도 상세 카드가 같은 매핑을 공유하며, 새 카테고리를 만들면 여기에 아이콘을 먼저 등록한다. 이모지는 칩·배지에 쓰지 않는다(필터 라벨에도 넣지 않는다).
+- **규격:** lucide, 칩 14px / 배지 12px, `strokeWidth={2}`, `currentColor` 상속(활성 시 `text-on-primary`, 비활성 시 `text-ink`를 부모 버튼이 정한다), 아이콘-텍스트 간격 `gap-1.5`, `shrink-0`. 모든 칩이 한 개의 버튼 규격(`min-h-44px`, `px-3.5`, `whitespace-nowrap`)을 쓴다.
+- **매핑:** 전체=LayoutGrid · 찜=Heart(1건 이상이면 채움, 색은 칩 색 그대로) · 지금 이용 가능/영업 중=Clock3 · 코인세탁=WashingMachine · 무인프린트=Printer · 심야약국=Pill · 보조배터리=BatteryCharging · 공영주차장=ParkingSquare · 세차장=Car · 개방화장실=Toilet · 10/15/20/30년+=Award(업력 뱃지와 동일) · (노포 업종) 국밥=Soup, 포차=Beer, 혼밥=User, 기타=Utensils.
+- **카드 배지:** 생존 모드 카드의 우측 상단 배지는 카테고리 아이콘(12px)+배지 텍스트, 노포 모드는 업력 뱃지(Award). 시계 아이콘을 배지의 범용 아이콘으로 쓰지 않는다.
+- 현장 피드백 칩(👍 ⏳ 등)은 카테고리 칩이 아니라 이번 규칙의 대상이 아니다.
