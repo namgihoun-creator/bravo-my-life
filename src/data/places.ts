@@ -255,6 +255,21 @@ export function matchesFilter(p: Place, key: string): boolean {
   return p.category === key || !!p.extra?.includes(key);
 }
 
+/**
+ * 빠른 키워드 검색: 상호·요약·태그·부가정보(extra: 세차유형·편의시설·업종 등)·주소에서 부분 일치.
+ * 대소문자·공백은 무시하고, 공백으로 나눈 단어는 모두(AND) 들어 있어야 한다. 예: '셀프 세차', '24시', '국밥'.
+ */
+export function matchesQuery(p: Place, query: string): boolean {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const hay = [p.name, p.summary, p.address, ...(p.tags ?? []), ...(p.extra ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  return terms.every((t) => hay.includes(t));
+}
+
 /** 노포 음식 업종 라벨 (예: '한식 · 고기·구이'). 수집 스크립트가 extra 배열의 'food:' 항목으로 저장한다. */
 export function foodLabel(p: Place): string | null {
   const e = p.extra?.find((x) => x.startsWith("food:"));

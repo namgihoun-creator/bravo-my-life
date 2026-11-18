@@ -8,6 +8,8 @@ import {
   LocateFixed,
   MapPin,
   PencilLine,
+  Search,
+  X,
   List,
   Map as MapIcon,
   Plus,
@@ -29,6 +31,7 @@ import {
   foodLabel,
   isVisiblePlace,
   matchesFilter,
+  matchesQuery,
   nearestParking,
   walkMinutes,
   yearsInBusiness,
@@ -87,11 +90,13 @@ function LocationBadge({ loc, onClick }: { loc: Loc; onClick: () => void }) {
       onClick={onClick}
       aria-label={`동네 설정, 현재 ${label}`}
       aria-haspopup="dialog"
-      className="theme-t inline-flex min-h-[44px] max-w-[180px] shrink cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption max-[359px]:max-w-[148px] max-[359px]:pl-2.5 max-[359px]:pr-1.5 font-semibold text-primary"
+      className="theme-t inline-flex min-h-[44px] min-w-0 max-w-[180px] shrink-0 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface pl-3 pr-2 text-caption max-[359px]:max-w-[148px] max-[359px]:pl-2.5 max-[359px]:pr-1.5 font-semibold text-primary"
     >
       <Icon size={14} className="shrink-0" aria-hidden />
-      <span className="truncate">{label}</span>
-      <ChevronDown size={14} className="shrink-0" aria-hidden />
+      <span className="truncate">
+        {loc.kind === "gps" ? "현재 위치" : label}
+      </span>
+      <ChevronDown size={14} className="shrink-0 max-[359px]:hidden" aria-hidden />
     </button>
   );
 }
@@ -730,6 +735,10 @@ export default function Home() {
   const [view, setView] = useState<View>("list"); // 기본값: 목록
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
   const [openOnly, setOpenOnly] = useState(false); // '지금 영업 중 / 이용 가능(24시)' 필터
+  const [searchOpen, setSearchOpen] = useState(false); // 빠른 키워드 검색 바 펼침
+  const [query, setQuery] = useState(""); // 빠른 키워드 검색어
+  const searchRef = useRef<HTMLInputElement>(null);
+  const q = query.trim();
   const nowMs = useMinuteClock();
   const favorites = useFavorites();
   // scrollTargetId: 스크롤 이동 대상 / highlightId: 도착 후 링 강조 중인 카드
@@ -867,7 +876,7 @@ export default function Home() {
     }
     setSelectedId(null);
     setAnchor(null);
-    setLoc({ kind: "search", name: "지도에서 고른 위치", lat: c.lat, lng: c.lng });
+    setLoc({ kind: "search", name: "지도 현위치", lat: c.lat, lng: c.lng });
   };
 
   const changeView = (v: View) => {
@@ -992,11 +1001,12 @@ export default function Home() {
       counts,
       favCount: favBase.length,
       activeFilter,
-      rawPlaces:
-        activeFilter === "fav" ? favPool : pool.filter((p) => matchesFilter(p, activeFilter)),
+      rawPlaces: (activeFilter === "fav" ? favPool : pool.filter((p) => matchesFilter(p, activeFilter))).filter((p) =>
+        matchesQuery(p, q),
+      ),
       unknownExcluded,
     };
-  }, [all, mode, filter, loading, error, openActive, clock, favorites, centerPoint]);
+  }, [all, mode, filter, loading, error, openActive, clock, favorites, centerPoint, q]);
 
   // 분 단위 갱신으로 목록 내용이 그대로인데 배열만 새로 만들어져 지도가 다시 맞춰지지 않도록 id 기준으로 참조를 유지한다
   const placesKey = rawPlaces.map((p) => p.id).join("|");
@@ -1025,10 +1035,78 @@ export default function Home() {
             <h1 className="theme-t text-title1 font-extrabold tracking-[-0.03em] text-primary max-[359px]:text-[22px] max-[339px]:text-[20px]">
               Bravo My Life
             </h1>
-            <p className="mt-0.5 text-label text-muted">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
+            <p className="mt-0.5 text-label text-muted max-[399px]:text-[12px] max-[399px]:leading-4">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
           </div>
-          <LocationBadge loc={loc} onClick={() => setSheetOpen(true)} />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <LocationBadge loc={loc} onClick={() => setSheetOpen(true)} />
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen((o) => !o);
+              }}
+              aria-label={q ? `빠른 검색, 검색어 ${q}` : "빠른 검색"}
+              aria-expanded={searchOpen}
+              aria-controls="quick-search"
+              className={`theme-t relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border text-primary ${
+                searchOpen || q ? "border-primary bg-surface" : "border-line bg-surface"
+              }`}
+            >
+              <Search size={18} strokeWidth={2} aria-hidden />
+              {q && <span aria-hidden className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-surface bg-primary" />}
+            </button>
+          </div>
         </div>
+        {searchOpen && (
+          <form
+            id="quick-search"
+            role="search"
+            onSubmit={(e) => {
+              e.preventDefault();
+              searchRef.current?.blur();
+            }}
+            className="mt-3 flex items-center gap-1"
+          >
+            <div className="relative min-w-0 flex-1">
+              <input
+                ref={searchRef}
+                autoFocus
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                maxLength={30}
+                enterKeyHint="search"
+                placeholder="가게명, 메뉴, 24시, 셀프세차 검색"
+                aria-label="빠른 키워드 검색"
+                className={`theme-t h-11 w-full min-w-0 rounded-xl border border-line bg-surface pl-3 text-[14px] text-ink placeholder:text-muted [&::-webkit-search-cancel-button]:hidden ${
+                  query ? "pr-11" : "pr-3"
+                }`}
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    searchRef.current?.focus();
+                  }}
+                  aria-label="검색어 지우기"
+                  className="absolute right-0 top-0 flex h-11 w-11 cursor-pointer items-center justify-center text-muted"
+                >
+                  <X size={16} strokeWidth={2} aria-hidden />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setSearchOpen(false);
+              }}
+              className="min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap px-2 text-label font-semibold text-muted active:opacity-70"
+            >
+              닫기
+            </button>
+          </form>
+        )}
       </header>
 
       <div className="theme-t sticky top-0 z-10 mt-4 space-y-3 bg-bg px-4 pb-3 pt-2 shadow-sticky">
@@ -1135,6 +1213,19 @@ export default function Home() {
               />
             )}
           </PlaceMap>
+        ) : places.length === 0 && q ? (
+          <div className="py-12 text-center" role="status">
+            <p className="text-body text-muted [overflow-wrap:anywhere]">‘{q}’에 맞는 장소가 없어요</p>
+            <button
+              onClick={() => {
+                setQuery("");
+                searchRef.current?.focus();
+              }}
+              className="mt-3 min-h-[44px] cursor-pointer rounded-xl border border-primary px-5 text-label font-semibold text-primary"
+            >
+              검색어 지우기
+            </button>
+          </div>
         ) : places.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-body text-muted">

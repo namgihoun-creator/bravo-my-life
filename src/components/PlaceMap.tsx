@@ -21,7 +21,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   /** 지도를 쓸 수 없을 때 목록으로 돌아가는 버튼 */
   onFallback: () => void;
-  /** '이 지역 다시 찾기': 현재 지도 중심 좌표로 다시 조회 */
+  /** '이 지역에서 다시 검색': 현재 지도 중심 좌표로 다시 조회 */
   onSearchHere: (center: { lat: number; lng: number }) => void;
   /** 선택된 장소의 상세 카드 (지도 하단에 오버레이) */
   children?: React.ReactNode;
@@ -29,7 +29,9 @@ interface Props {
 
 type Status = "loading" | "ready" | "error";
 
-const SEARCH_HERE_M = 500;
+const SEARCH_HERE_M = 200;
+/** 코드가 지도를 움직인(맞춤·이동) 직후 이 시간 동안은 zoom_changed 를 사용자 조작으로 보지 않는다 */
+const PROGRAMMATIC_MS = 900;
 
 /**
  * 모드별 핀/클러스터 색 (DESIGN.md 토큰과 같은 값).
@@ -110,6 +112,7 @@ export default function PlaceMap({
   const mapRef = useRef<KMap | null>(null);
   const kakaoRef = useRef<KakaoMapsNS | null>(null);
   const overlaysRef = useRef<KOverlay[]>([]);
+  const programmaticAt = useRef(0);
   const markersRef = useRef<KMarker[]>([]);
   const clustererRef = useRef<KClusterer | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -134,10 +137,15 @@ export default function PlaceMap({
           level: 5,
         });
         kakao.event.addListener(map, "click", () => onSelectRef.current(null)); // 지도 빈 곳 클릭 → 닫기
-        // 드래그가 끝나면 지도 중심을 기억해, 조회 기준에서 500m 넘게 벗어났는지 계산한다
-        kakao.event.addListener(map, "dragend", () => {
+        // 사용자가 드래그를 끝내거나 줌을 바꾸면 지도 중심을 기억해, 조회 기준에서 200m 넘게 벗어났는지 계산한다
+        const remember = () => {
           const c = map.getCenter();
           setMapCenter({ lat: c.getLat(), lng: c.getLng() });
+        };
+        kakao.event.addListener(map, "dragend", remember);
+        kakao.event.addListener(map, "zoom_changed", () => {
+          if (Date.now() - programmaticAt.current < PROGRAMMATIC_MS) return; // 장소 맞춤·핀 이동으로 생긴 줌 변화는 제외
+          remember();
         });
         mapRef.current = map;
         setStatus("ready");
@@ -239,6 +247,7 @@ export default function PlaceMap({
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
+    programmaticAt.current = Date.now();
     map.relayout();
     if (places.length === 0) {
       map.setCenter(new kakao.LatLng(center.lat, center.lng));
@@ -260,12 +269,13 @@ export default function PlaceMap({
     if (!p) return;
     const b = map.getBounds();
     const span = b.getNorthEast().getLat() - b.getSouthWest().getLat();
+    programmaticAt.current = Date.now();
     map.panTo(new kakao.LatLng(p.lat - span * 0.22, p.lng));
     // places 변경 시 재이동하지 않도록 선택 변경에만 반응
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, status]);
 
-  // 조회 기준 위치에서 500m 이상 벗어나면 '이 지역 다시 찾기' 노출 (기준 위치가 바뀌면 자동으로 다시 계산)
+  // 조회 기준 위치에서 200m 이상 벗어나면 '이 지역에서 다시 검색' 노출 (기준 위치가 바뀌면 자동으로 다시 계산)
   const movedFar =
     status === "ready" && mapCenter !== null && distanceM(center.lat, center.lng, mapCenter.lat, mapCenter.lng) >= SEARCH_HERE_M;
 
@@ -321,7 +331,7 @@ export default function PlaceMap({
           className="theme-t absolute left-1/2 top-3 z-20 flex min-h-[44px] -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border-2 border-surface bg-primary px-4 text-label font-bold text-on-primary shadow-sticky active:opacity-90"
         >
           <RefreshCw size={16} aria-hidden />
-          이 지역 다시 찾기
+          이 지역에서 다시 검색
         </button>
       )}
 
