@@ -339,8 +339,44 @@ body {
 }
 
 /* ── 가로 스크롤 칩: 오른쪽 가장자리를 부드럽게 흐려 '더 있음'을 알린다 (끝까지 스크롤하면 패딩 덕에 마지막 칩은 선명) ── */
-.chip-fade {
-  padding-right: 28px;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+/* ── 가로 스크롤 칩 바(HScroll): PC 마우스 전용 보조 UI ── */
+.hscroll-arrow {
+  display: none; /* 터치 기기(폴드 커버 포함)에서는 숨겨 좁은 화면을 가리지 않는다 */
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.hscroll {
+  --hs-gutter: 0px; /* 화살표가 놓일 자리: 터치 기기는 0(화살표 없음) */
+}
+.hscroll-arrow-left {
+  left: 0;
+}
+.hscroll-arrow-right {
+  right: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hscroll-arrow {
+    display: flex;
+  }
+  .hscroll {
+    --hs-gutter: 34px; /* 32px 화살표 + 여백 */
+    cursor: grab;
+  }
+  .hscroll-arrow:hover {
+    background: var(--bg);
+  }
+  .hscroll-arrow:active {
+    transform: translateY(-50%) scale(0.94);
+  }
+}
+/* 끄는 동안: 손바닥 커서, 글자 선택·칩 호버 반응 없음 */
+.hscroll[data-dragging],
+.hscroll[data-dragging] * {
+  cursor: grabbing !important;
+  user-select: none;
 }

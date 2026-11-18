@@ -47,6 +47,7 @@ import { toggleFavorite, useFavorites } from "@/lib/favorites";
 import { pushFavorite, pushVisited, useCouple } from "@/lib/couple";
 import { cleanNote, NOTE_MAX, removeVisited, setVisited, useVisited } from "@/lib/visited";
 import CoupleSheet from "@/components/CoupleSheet";
+import HScroll from "@/components/HScroll";
 import { getOpenState } from "@/lib/openStatus";
 import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
@@ -404,14 +405,9 @@ function FilterChips({
   if (showOpenChip) items.splice(Math.min(visitedCount > 0 ? 3 : 2, items.length), 0, openChip);
 
   return (
-    <div
-      ref={ref}
-      role="group"
-      aria-label="카테고리 필터"
-      className="no-scrollbar chip-fade flex min-w-0 flex-1 gap-2 overflow-x-auto"
-    >
+    <HScroll scrollRef={ref} ariaLabel="카테고리 필터">
       {items}
-    </div>
+    </HScroll>
   );
 }
 
