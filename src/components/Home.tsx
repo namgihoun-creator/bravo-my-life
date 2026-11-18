@@ -120,6 +120,9 @@ interface Anchor {
 
 const ANCHOR_RADII = [500, 800];
 
+/** 목록 한 번에 그리는 카드 수 */
+const PAGE_SIZE = 30;
+
 function useAnchorParking(anchor: Anchor | null, nonce: number) {
   const [res, setRes] = useState<{ key: string; places: Place[]; radius: number; error: boolean } | null>(null);
   const lat = anchor?.lat;
@@ -862,9 +865,10 @@ export default function Home() {
   };
 
   // 칩은 항상 1개만 활성: 카테고리/연차/찜을 고르면 '지금 영업 중'은 꺼진다
+  // 이미 활성인 칩을 한 번 더 누르면 '전체'로 돌아간다
   const changeFilter = (k: string) => {
     setOpenOnly(false);
-    setFilter(k);
+    setFilter(k === filter && k !== "all" ? "all" : k);
     setSelectedId(null);
   };
 
@@ -930,7 +934,10 @@ export default function Home() {
       started = true;
       window.removeEventListener("scrollend", startRing);
       setHighlightId(scrollTargetId);
-      clearTimer = window.setTimeout(() => setHighlightId(null), 2500);
+      clearTimer = window.setTimeout(() => {
+        setHighlightId(null);
+        setScrollTargetId(null);
+      }, 2500);
     };
 
     window.addEventListener("scrollend", startRing);
@@ -1012,6 +1019,19 @@ export default function Home() {
   const placesKey = rawPlaces.map((p) => p.id).join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const places = useMemo(() => rawPlaces, [placesKey]);
+
+  // 목록은 거리순 상위 30곳만 먼저 그리고 '더 보기'로 30곳씩 늘린다. 조회 조건이 바뀌면 key 가 달라져 자동으로 30곳으로 돌아간다.
+  // (지도 핀·건수는 전체 매칭 기준: places/rawPlaces 그대로)
+  const listKey = `${mode}|${filter}|${openActive}|${q}|${view}|${anchor?.id ?? ""}|${loc.kind === "pending" ? "p" : `${loc.lat},${loc.lng}`}`;
+  const [pageState, setPageState] = useState({ key: listKey, n: PAGE_SIZE });
+  // 조건이 바뀌면 저장된 개수를 바로 버린다(렌더 중 상태 조정). 안 그러면 이전 조건으로 돌아왔을 때 옛 개수가 되살아난다.
+  if (pageState.key !== listKey) setPageState({ key: listKey, n: PAGE_SIZE });
+  const baseShown = pageState.key === listKey ? pageState.n : PAGE_SIZE;
+  // 스크롤 이동 대상(주변 주차장·복귀)이 아직 안 그려진 위치면 거기까지 펼친다
+  const targetIdx = scrollTargetId ? rawPlaces.findIndex((p) => p.id === scrollTargetId) : -1;
+  const shown = Math.max(baseShown, targetIdx + 1);
+  const remaining = Math.max(rawPlaces.length - shown, 0);
+  const showMore = () => setPageState({ key: listKey, n: shown + PAGE_SIZE });
 
   // 카드(목록·지도 하단)는 최신 현장 정보가 담긴 rawPlaces로, 지도 핀(places)은 id가 같으면 참조를 유지해 화면이 다시 맞춰지지 않게 한다
   const selected = rawPlaces.find((p) => p.id === selectedId) ?? null;
@@ -1261,7 +1281,7 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          rawPlaces.map((p) => (
+          rawPlaces.slice(0, shown).map((p) => (
             <PlaceCard
               key={p.id}
               place={p}
@@ -1275,6 +1295,15 @@ export default function Home() {
               onAddTip={setTipTarget}
             />
           ))
+        )}
+        {view === "list" && !loading && !error && remaining > 0 && (
+          <button
+            onClick={showMore}
+            className="theme-t flex h-12 w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-tag-bg text-label font-bold text-primary active:opacity-80"
+          >
+            더 보기 (남은 {remaining}곳)
+            <ChevronDown size={16} strokeWidth={2} aria-hidden />
+          </button>
         )}
         {openActive && unknownExcluded > 0 && !loading && !error && (
           <p className="text-center text-caption text-muted" role="note">

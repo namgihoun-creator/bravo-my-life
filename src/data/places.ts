@@ -41,6 +41,22 @@ export interface Place {
   distance_m: number;
 }
 
+/** 노포 업종 칩 (건수 많은 순). group = 'food:' 대분류, sub = 소분류. 필터 key 는 'fd:' 접두 */
+export const FOOD_CHIPS: { key: string; label: string; group?: string; sub?: string }[] = [
+  { key: "fd:meat", label: "고기·구이", sub: "고기·구이" },
+  { key: "fd:pub", label: "호프·포차", group: "호프" },
+  { key: "fd:snack", label: "분식", group: "분식" },
+  { key: "fd:gukbap", label: "국밥·해장", sub: "국밥·해장" },
+  { key: "fd:chinese", label: "중식", group: "중식" },
+  { key: "fd:japanese", label: "일식", group: "일식" },
+  { key: "fd:seafood", label: "해물·생선", sub: "해물·생선" },
+  { key: "fd:noodle", label: "면·칼국수", sub: "면·칼국수" },
+  { key: "fd:chicken", label: "치킨·통닭", group: "치킨" },
+  { key: "fd:jokbal", label: "족발·보쌈", sub: "족발·보쌈" },
+  { key: "fd:stew", label: "백반·찌개", sub: "백반·찌개" },
+  { key: "fd:western", label: "양식", group: "양식" },
+];
+
 export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
   survival: [
     { key: "all", label: "전체" },
@@ -60,6 +76,8 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
     { key: "y15", label: "15년+" },
     { key: "y20", label: "20년+" },
     { key: "y30", label: "30년+" },
+    // 업종 칩: 수집 스크립트가 extra 'food:대분류 · 소분류'로 저장한 값 기준 (0건이면 칩 숨김)
+    ...FOOD_CHIPS.map(({ key, label }) => ({ key, label })),
   ],
 };
 
@@ -247,6 +265,13 @@ export function isVisiblePlace(p: Place): boolean {
 /** 필터 칩 매칭 (업력 칩은 'y10' 형태 — N년 이상) */
 export function matchesFilter(p: Place, key: string): boolean {
   if (key === "all" || key === "fav") return true; // 'fav'는 찜 목록을 미리 골라 둔 풀에서 쓰므로 추가 조건 없음
+  if (key.startsWith("fd:")) {
+    const chip = FOOD_CHIPS.find((c) => c.key === key);
+    const label = p.extra?.find((x) => x.startsWith("food:"))?.slice(5);
+    if (!chip || !label) return false;
+    const [group, sub] = label.split(" · "); // 예: '한식 · 고기·구이'
+    return chip.sub ? sub === chip.sub : group === chip.group;
+  }
   const m = /^y(\d+)$/.exec(key);
   if (m) {
     const y = yearsInBusiness(p);
