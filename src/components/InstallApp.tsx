@@ -7,8 +7,8 @@ import { dismissInstallBar, promptInstall, useInstallBarDismissed, useInstallSta
 const isIos = () => typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 /**
- * 최상단 슬림 앱 설치 바(48px). 설치된 앱(standalone)이거나 이번 세션에서 닫았다면 그리지 않는다.
- * '설치': 저장된 beforeinstallprompt 가 있으면 기본 설치 다이얼로그, 없으면 OS별 안내 시트.
+ * 최상단 슬림 바로가기 추가 바(48px). 설치된 앱(standalone)이거나 이번 세션에서 닫았다면 그리지 않는다.
+ * '추가': 저장된 beforeinstallprompt 가 있으면 기본 설치 다이얼로그, 없으면 OS별 안내 시트.
  */
 export default function InstallBar() {
   const { installed } = useInstallState();
@@ -31,7 +31,7 @@ export default function InstallBar() {
       {!installed && !dismissed && (
         <div
           role="region"
-          aria-label="앱 설치 안내"
+          aria-label="바로가기 추가 안내"
           className="flex h-12 w-full items-center gap-2 border-b border-[#DBEAFE] bg-[#EFF6FF] pl-4 pr-1"
         >
           <span
@@ -40,7 +40,7 @@ export default function InstallBar() {
             style={{ backgroundImage: "url(/icons/icon-192.png)" }}
           />
           <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[#1E293B]">
-            앱으로 설치해 더 빠르게 열기
+            홈 화면에 바로가기 추가
           </p>
           <button
             type="button"
@@ -48,13 +48,13 @@ export default function InstallBar() {
             className="flex min-h-[44px] shrink-0 cursor-pointer items-center px-1 active:opacity-80"
           >
             <span className="rounded-full bg-[#1D4ED8] px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white">
-              설치
+              추가
             </span>
           </button>
           <button
             type="button"
             onClick={dismissInstallBar}
-            aria-label="설치 안내 닫기"
+            aria-label="바로가기 추가 안내 닫기"
             className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-[#475569]"
           >
             <X size={18} aria-hidden />
@@ -83,20 +83,20 @@ function Step({ n, icon, children }: { n: number; icon: React.ReactNode; childre
 function InstallSheet({ onClose }: { onClose: () => void }) {
   const ios = isIos();
   const android = (
-    <section key="android" aria-label="안드로이드 설치 방법">
+    <section key="android" aria-label="안드로이드 추가 방법">
       <h3 className="text-label font-bold text-ink">안드로이드 (크롬)</h3>
       <ol className="mt-2 space-y-2.5">
         <Step n={1} icon={<EllipsisVertical size={18} />}>
           우측 상단 <b>⋮</b> 메뉴 누르기
         </Step>
         <Step n={2} icon={<PlusSquare size={18} />}>
-          <b>홈 화면에 추가</b> → <b>설치</b>
+          <b>홈 화면에 추가</b> → <b>추가</b>(또는 설치)
         </Step>
       </ol>
     </section>
   );
   const iphone = (
-    <section key="iphone" aria-label="아이폰 설치 방법">
+    <section key="iphone" aria-label="아이폰 추가 방법">
       <h3 className="text-label font-bold text-ink">아이폰 (Safari)</h3>
       <ol className="mt-2 space-y-2.5">
         <Step n={1} icon={<Share size={18} />}>
@@ -115,12 +115,12 @@ function InstallSheet({ onClose }: { onClose: () => void }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="앱 설치 안내"
+        aria-label="바로가기 추가 안내"
         className="sheet-up relative w-full max-w-md rounded-t-2xl bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))] text-ink shadow-sticky"
       >
         <div className="sheet-grabber" aria-hidden />
         <div className="flex items-center justify-between">
-          <h2 className="text-title2 font-bold tracking-[-0.02em]">홈 화면에 앱 설치</h2>
+          <h2 className="text-title2 font-bold tracking-[-0.02em]">홈 화면에 바로가기 추가</h2>
           <button
             onClick={onClose}
             aria-label="닫기"
@@ -129,7 +129,7 @@ function InstallSheet({ onClose }: { onClose: () => void }) {
             <X size={20} aria-hidden />
           </button>
         </div>
-        <p className="mt-1 text-label text-muted">설치하면 주소창 없이 바로 열려요. 2단계면 끝나요.</p>
+        <p className="mt-1 text-label text-muted">앱스토어 설치가 아니에요. 스마트폰 바탕화면에 바로 열 수 있는 아이콘을 추가해요. 2단계면 끝나요.</p>
 
         <div className="mt-4 space-y-5">{ios ? [iphone, android] : [android, iphone]}</div>
 
