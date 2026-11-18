@@ -3,9 +3,30 @@ import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ToastHost from "@/components/ToastHost";
 
+const SITE_URL = "https://bravo-mylife.vercel.app";
+const OG_TITLE = "Bravo My Life — 내 주변 찐노포 & 생활 편의 탐색";
+const OG_DESC =
+  "30년 넘은 찐노포 맛집부터 급할 때 찾는 개방화장실·공영주차장·세탁방까지, 내 주변 알짜 장소를 한눈에 찾고 길찾기까지 한 번에.";
+
 export const metadata: Metadata = {
-  title: "브라보 마이 라이프",
-  description: "내 손안의 동네 생존 & 찐노포 가이드",
+  metadataBase: new URL(SITE_URL),
+  title: OG_TITLE,
+  description: OG_DESC,
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    siteName: "Bravo My Life",
+    url: SITE_URL,
+    title: OG_TITLE,
+    description: OG_DESC,
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: OG_TITLE }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: OG_TITLE,
+    description: OG_DESC,
+    images: ["/og-image.png"],
+  },
   applicationName: "브라보 마이 라이프",
   manifest: "/manifest.json",
   // iOS '홈 화면에 추가' 시 주소창 없이 전체 화면으로 열림

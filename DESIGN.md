@@ -340,3 +340,9 @@
 - **드래그:** 마우스 왼쪽 버튼(`pointerType: mouse`)으로 잡고 끌면 스크롤한다. 5px 이상 끈 뒤 뗄 때의 클릭은 캡처 단계에서 차단해 칩이 잘못 눌리지 않는다. 끄는 동안 `cursor: grabbing`·글자 선택 방지, 평소 `cursor: grab`(`@media (hover: hover) and (pointer: fine)`). 터치 스와이프는 브라우저 기본 동작 그대로다.
 - **화살표:** 마우스 환경(`hover: hover` + `pointer: fine`)에서만, 더 갈 칩이 남은 쪽에 32px 원형 `<` `>` 버튼(`bg-surface`, `border-line`, `shadow-card`, 아이콘 16px 중앙 정렬)을 띄운다. 클릭하면 컨테이너 폭의 80%만큼 부드럽게 이동한다. **터치 기기(320px 폴드 커버 포함)에서는 `display: none`.**
 - **페이드:** 더 갈 칩이 있는 쪽 가장자리만 마스크로 부드럽게 사라지게 한다(28px). 마우스 환경에서는 화살표 자리(`--hs-gutter` 34px)까지 칩이 먼저 사라져 화살표가 칩 글자를 가리지 않는다. 터치 기기는 `--hs-gutter: 0`이라 기존 28px 페이드 그대로.
+
+## 27. OG 썸네일 (카카오톡·SNS 링크 미리보기)
+- 파일 `public/og-image.png`, **1200×630**, 메타데이터는 `src/app/layout.tsx`(`metadataBase` `https://bravo-mylife.vercel.app`, `openGraph`·`twitter: summary_large_image`).
+- 배색: 딥 그린 `#1E3D34`→`#2F5D50` 배경, 크림 `#FFF8EC`/`#FFFDF7`, 골드 `#C8963E`·`#F7C948`, 에스프레소 `#2B1A0E`. 글꼴 Pretendard(800 타이틀 68px, 500 서브 28px).
+- 구성: 좌측 `BRAVO MY LIFE` 배지 + 타이틀 + 서브 문구, 우측 지도 그리드·점선 경로 위에 `30년+ 찐노포` 카드와 `개방화장실 · 공영주차장`·`원탭 길찾기`·`커플 실시간 공유` 칩(라인 아이콘, 이모지 없음). 300px로 줄여도 타이틀이 읽히도록 여백·대비를 둔다.
+- 재생성: 임시 HTML을 Playwright로 1200×630 캡처(저장소에 임시 파일을 두지 않는다). 문구·배색을 바꾸면 이 절을 같이 갱신한다.
