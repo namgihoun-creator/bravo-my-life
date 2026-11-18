@@ -39,6 +39,12 @@ export interface Place {
   /** 인허가 연도 (RPC 003 마이그레이션 이후 제공) */
   open_year?: number | null;
   distance_m: number;
+  /** 최종 데이터 현행화(확인) 시각 — 006 마이그레이션 이후 제공 */
+  last_synced_at?: string | null;
+  /** 폐업·정보오류 제보 또는 폐업 의심 플래그 ('closed' | 'info_changed') — 006 이후 */
+  reported_issue?: "closed" | "info_changed" | null;
+  /** 폐업·정보오류 제보 누적 건수 — 006 이후 */
+  closure_reports?: number;
 }
 
 /** 노포 업종 칩 (건수 많은 순). group = 'food:' 대분류, sub = 소분류. 필터 key 는 'fd:' 접두 */
@@ -385,3 +391,20 @@ export function placeMeta(p: Place): PlaceMeta {
     facilities: (p.extra ?? []).filter((e) => e.startsWith("facility:")).map((e) => e.slice(9)),
   };
 }
+
+/* ───────────── 데이터 기준일 · 폐업/정보오류 제보 ───────────── */
+
+const KST_YM = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" });
+
+/** last_synced_at → '2026.11 확인' (정보가 없으면 null: 006 마이그레이션 전에는 표시하지 않는다) */
+export function syncedLabel(p: Place): string | null {
+  if (!p.last_synced_at) return null;
+  const d = new Date(p.last_synced_at);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = KST_YM.formatToParts(d);
+  const y = parts.find((x) => x.type === "year")?.value;
+  const m = parts.find((x) => x.type === "month")?.value;
+  return y && m ? `${y}.${m} 확인` : null;
+}
+
+export type IssueType = "closed" | "info_changed";

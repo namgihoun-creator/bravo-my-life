@@ -1,0 +1,91 @@
+name: Sync places (데이터 현행화)
+
+# 필요한 Secrets (GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret)
+#   SUPABASE_URL                 예) https://xxxx.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY    service_role 키 (서버 전용, 브라우저·NEXT_PUBLIC_ 에 절대 넣지 않는다)
+#   KAKAO_REST_API_KEY           카카오 REST API 키
+#
+# 실행 일정 (cron 은 UTC 기준, KST = UTC+9)
+#   survival   : 격주 일요일 04:00 KST  = 매주 토요일 19:00 UTC 에 깨우고, ISO 주차가 홀수인 주는 건너뜀
+#   nopo-check : 분기 1일(1·4·7·10월) 04:30 KST = 전날 19:30 UTC (12/31, 3/31, 6/30, 9/30)
+#   수동 실행  : Actions 탭 → Sync places → Run workflow (mode, dry_run 선택)
+on:
+  schedule:
+    - cron: "0 19 * * 6"
+    - cron: "30 19 31 12,3 *"
+    - cron: "30 19 30 6,9 *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "실행 모드"
+        type: choice
+        options:
+          - survival
+          - nopo-check
+        default: survival
+      dry_run:
+        description: "DB 에 쓰지 않고 건수 리포트만 (권장: 처음엔 true)"
+        type: boolean
+        default: true
+
+# 같은 작업이 겹쳐 실행되지 않게 한다
+concurrency:
+  group: sync-places
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: 실행 계획 (모드·건너뛰기 판단)
+        id: plan
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            mode="${{ inputs.mode }}"
+            dry="${{ inputs.dry_run }}"
+            skip=false
+          else
+            dry=false
+            if [ "${{ github.event.schedule }}" = "0 19 * * 6" ]; then
+              mode=survival
+              week=$(date -u +%V)
+              if [ $((10#$week % 2)) -ne 0 ]; then skip=true; else skip=false; fi   # 격주: 짝수 주만 실행
+            else
+              mode=nopo-check
+              skip=false
+            fi
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "dry=$dry" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode dry_run=$dry skip=$skip"
+
+      - name: 체크아웃
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Node 설정
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: 의존성 설치
+        if: steps.plan.outputs.skip != 'true'
+        run: npm ci
+
+      - name: 데이터 현행화 실행
+        if: steps.plan.outputs.skip != 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+        run: |
+          flags=""
+          if [ "${{ steps.plan.outputs.dry }}" = "true" ]; then flags="--dry-run"; fi
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-places.ts --mode=${{ steps.plan.outputs.mode }} $flags

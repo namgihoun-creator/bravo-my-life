@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
-import { DAY_CHARS, fieldInfo, type Place, type PlaceFeedback } from "@/data/places";
+import { Clock3, TriangleAlert, X } from "lucide-react";
+import { DAY_CHARS, fieldInfo, type IssueType, type Place, type PlaceFeedback } from "@/data/places";
 import { getSupabase } from "@/lib/supabase";
+import { showToast } from "@/lib/toast";
 
 /** 숫자만 입력해도 'HH:MM~HH:MM'으로 자동 서식 (한 손 입력용: 숫자 키패드) */
 function formatRange(raw: string): string {
@@ -26,18 +27,71 @@ function normalizeRange(v: string): string | null {
 }
 
 const TIP_MAX = 80;
+
+/** 이 기기에서 이미 보낸 제보(장소·유형별 1회). 같은 기기의 반복 제보로 숫자가 부풀지 않게 한다 */
+const SENT_KEY = "bml_issue_reports";
+
+function readSent(placeId: string): Partial<Record<IssueType, boolean>> {
+  try {
+    const all = JSON.parse(localStorage.getItem(SENT_KEY) || "{}") as Record<string, Partial<Record<IssueType, boolean>>>;
+    return all[placeId] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function markSent(placeId: string, type: IssueType) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SENT_KEY) || "{}") as Record<string, Partial<Record<IssueType, boolean>>>;
+    all[placeId] = { ...all[placeId], [type]: true };
+    localStorage.setItem(SENT_KEY, JSON.stringify(all));
+  } catch {
+    /* 저장 불가: 이번 화면에서만 중복을 막는다 */
+  }
+}
 const SPAM = /https?:|www\.|[a-z0-9-]+\.(com|net|kr|io|me|co)(?![a-z])|@/i;
 
 export default function FieldTipSheet({
   place,
   onClose,
   onSaved,
+  onReported,
 }: {
   place: Place;
   onClose: () => void;
   /** RPC가 돌려준 최신 feedback (현장 정보 병합 결과) */
   onSaved: (placeId: string, feedback: PlaceFeedback) => void;
+  /** 폐업·정보오류 제보가 접수됐을 때(서버가 돌려준 누적 상태) */
+  onReported: (placeId: string, result: { reported_issue: IssueType; closure_reports: number }) => void;
 }) {
+  const [sent, setSent] = useState<Partial<Record<IssueType, boolean>>>(() => readSent(place.id));
+  const [reporting, setReporting] = useState<IssueType | null>(null);
+  const [reportMsg, setReportMsg] = useState<string | null>(null);
+
+  async function report(type: IssueType) {
+    if (sent[type] || reporting) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setReportMsg("오프라인 상태에서는 제보할 수 없어요.");
+      return;
+    }
+    setReporting(type);
+    setReportMsg(null);
+    try {
+      const { data, error } = await getSupabase().rpc("report_place_issue", { p_place_id: place.id, p_issue_type: type });
+      if (error) throw error;
+      markSent(place.id, type);
+      setSent((prev) => ({ ...prev, [type]: true }));
+      const res = (data ?? {}) as { reported_issue?: IssueType; closure_reports?: number };
+      onReported(place.id, { reported_issue: res.reported_issue ?? type, closure_reports: res.closure_reports ?? 1 });
+      showToast("제보 고마워요! 다른 분들이 헛걸음하지 않게 카드에 표시돼요.");
+    } catch (e) {
+      console.error("report_place_issue", e);
+      // 006 마이그레이션 전에는 함수가 없다 → 앱은 멈추지 않고 안내만 한다
+      setReportMsg("지금은 제보를 받을 수 없어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setReporting(null);
+    }
+  }
   const info = fieldInfo(place);
   const [days, setDays] = useState<Set<string>>(new Set(info.closedDays));
   const [hours, setHours] = useState(info.hours ?? "");
@@ -127,6 +181,39 @@ export default function FieldTipSheet({
           </button>
         </div>
 
+        <section className="mt-3 rounded-xl border border-line bg-bg p-3" aria-label="폐업·정보 오류 제보">
+          <p className="text-caption font-semibold text-muted">잘못된 정보를 발견했나요? 한 번만 눌러 알려 주세요</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => report("closed")}
+              disabled={!!sent.closed || reporting !== null}
+              className={`inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-label font-semibold disabled:cursor-default ${
+                sent.closed ? "border-line text-muted" : "border-danger text-danger"
+              }`}
+            >
+              <TriangleAlert size={14} strokeWidth={2} aria-hidden />
+              {sent.closed ? "폐업 제보 접수됨" : reporting === "closed" ? "보내는 중…" : "폐업/이전했어요"}
+            </button>
+            <button
+              type="button"
+              onClick={() => report("info_changed")}
+              disabled={!!sent.info_changed || reporting !== null}
+              className={`inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-label font-semibold disabled:cursor-default ${
+                sent.info_changed ? "border-line text-muted" : "border-line bg-surface text-ink"
+              }`}
+            >
+              <Clock3 size={14} strokeWidth={2} aria-hidden />
+              {sent.info_changed ? "변경 제보 접수됨" : reporting === "info_changed" ? "보내는 중…" : "운영시간·요금이 달라요"}
+            </button>
+          </div>
+          {reportMsg && (
+            <p role="alert" className="mt-2 text-caption font-semibold text-danger">
+              {reportMsg}
+            </p>
+          )}
+        </section>
+
         <fieldset className="mt-3">
           <legend className="text-caption font-semibold text-muted">정기휴무일 (여러 개 선택)</legend>
           <div className="mt-1 flex gap-[3px]" role="group" aria-label="정기휴무일">
@@ -138,7 +225,7 @@ export default function FieldTipSheet({
                   type="button"
                   aria-pressed={on}
                   onClick={() => toggleDay(d)}
-                  className={`flex h-11 min-w-11 flex-1 cursor-pointer items-center justify-center rounded-full border text-label font-bold ${
+                  className={`flex h-11 min-w-11 flex-1 cursor-pointer items-center justify-center rounded-full border text-label font-bold max-[359px]:min-w-0 max-[359px]:rounded-xl ${
                     on ? "border-danger bg-danger text-white" : "border-line bg-bg text-ink"
                   }`}
                 >

@@ -5,6 +5,7 @@ import {
   Award,
   ChevronDown,
   HeartHandshake,
+  TriangleAlert,
   Heart,
   LocateFixed,
   MapPin,
@@ -29,6 +30,7 @@ import {
   feedbackCount,
   fieldInfo,
   placeMeta,
+  syncedLabel,
   foodLabel,
   isVisiblePlace,
   matchesFilter,
@@ -543,6 +545,16 @@ function PlaceCard({
         )}
       </div>
 
+      {place.reported_issue && (
+        <p
+          role="status"
+          className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-lg border border-warning bg-surface px-2 py-1 text-caption font-bold text-warning"
+        >
+          <TriangleAlert size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+          <span className="min-w-0 [overflow-wrap:anywhere]">폐업·변경 제보됨</span>
+        </p>
+      )}
+
       {food && (
         <p className="mt-0.5 flex items-center gap-1 text-label font-semibold text-muted">
           <UtensilsCrossed size={14} className="shrink-0" aria-hidden />
@@ -812,6 +824,11 @@ function PlaceCard({
           인근 공영주차장 보기 · 도보 {near.walkMin}분
         </button>
       )}
+      {syncedLabel(place) && (
+        <p className="tnum mt-2 text-right text-caption text-muted" title="데이터를 마지막으로 확인한 달">
+          {syncedLabel(place)}
+        </p>
+      )}
     </article>
   );
 }
@@ -866,6 +883,10 @@ export default function Home() {
   const [refresh, setRefresh] = useState(0); // 조용한 새로고침(화면 유지)
   const [tipTarget, setTipTarget] = useState<Place | null>(null); // '현장 정보 추가' 시트 대상
   const [patches, setPatches] = useState<Record<string, PlaceFeedback>>({}); // 내가/다른 기기가 방금 바꾼 feedback
+  // 방금 접수·수신된 폐업/정보오류 제보 상태 (조회 결과 위에 덮어쓴다)
+  const [issuePatches, setIssuePatches] = useState<
+    Record<string, { reported_issue: Place["reported_issue"]; closure_reports: number }>
+  >({});
 
   const [anchor, setAnchor] = useState<Anchor | null>(null); // '주변 주차장' 기준 노포 (null이면 평소 화면)
   const nearby = useNearby(loc, nonce, refresh);
@@ -876,8 +897,13 @@ export default function Home() {
   const staleAt = anchor ? null : nearby.staleAt;
   // 조회 결과 위에 최신 현장 정보(내 등록 + 실시간 수신)를 덮어쓴다
   const all = useMemo(
-    () => fetched.map((p) => (patches[p.id] ? { ...p, feedback: patches[p.id] } : p)),
-    [fetched, patches],
+    () =>
+      fetched.map((p) => {
+        const fb = patches[p.id];
+        const issue = issuePatches[p.id];
+        return fb || issue ? { ...p, ...(fb ? { feedback: fb } : {}), ...(issue ?? {}) } : p;
+      }),
+    [fetched, patches, issuePatches],
   );
 
   // 현재 화면에 있는 장소 id (실시간 변경 중 관련 있는 것만 반영하기 위해)
@@ -896,10 +922,25 @@ export default function Home() {
       const channel = sb
         .channel("bml-places-live")
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "bml_places" }, (payload) => {
-          const row = payload.new as { id?: string; feedback?: PlaceFeedback };
-          if (!row?.id || !row.feedback || !visibleIds.current.has(row.id)) return;
-          const { id, feedback } = row;
-          setPatches((prev) => ({ ...prev, [id]: feedback }));
+          const row = payload.new as {
+            id?: string;
+            feedback?: PlaceFeedback;
+            reported_issue?: Place["reported_issue"];
+            closure_reports?: number;
+          };
+          if (!row?.id || !visibleIds.current.has(row.id)) return;
+          const id = row.id;
+          if (row.feedback) {
+            const feedback = row.feedback;
+            setPatches((prev) => ({ ...prev, [id]: feedback }));
+          }
+          // 006 이후: 폐업·정보오류 제보 상태도 다른 기기에 바로 반영
+          if ("reported_issue" in row) {
+            setIssuePatches((prev) => ({
+              ...prev,
+              [id]: { reported_issue: row.reported_issue ?? null, closure_reports: row.closure_reports ?? 0 },
+            }));
+          }
         })
         .subscribe();
       cleanup = () => {
@@ -1484,6 +1525,7 @@ export default function Home() {
             setPatches((prev) => ({ ...prev, [id]: feedback }));
             showToast("현장 정보를 등록했어요. 다른 기기에도 바로 공유돼요!");
           }}
+          onReported={(id, res) => setIssuePatches((prev) => ({ ...prev, [id]: res }))}
         />
       )}
 

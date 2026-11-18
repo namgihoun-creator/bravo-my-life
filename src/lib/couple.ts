@@ -118,9 +118,14 @@ async function fetchPlaces(ids: string[]): Promise<Map<string, Place>> {
   const valid = ids.filter((id) => UUID_RE.test(id));
   const sb = getSupabase();
   for (let i = 0; i < valid.length; i += 80) {
-    const { data, error } = await sb.from("bml_places").select(PLACE_COLS).in("id", valid.slice(i, i + 80));
-    if (error) throw error;
-    for (const r of (data ?? []) as Omit<Place, "distance_m">[]) out.set(r.id, { ...r, distance_m: 0 });
+    const ids80 = valid.slice(i, i + 80);
+    // 006 이후에는 기준일·제보 상태도 함께 가져오고, 컬럼이 아직 없으면 기존 컬럼만으로 다시 시도한다
+    const extended: string = `${PLACE_COLS},last_synced_at,reported_issue,closure_reports`;
+    const base: string = PLACE_COLS;
+    let res = await sb.from("bml_places").select(extended).in("id", ids80);
+    if (res.error) res = await sb.from("bml_places").select(base).in("id", ids80);
+    if (res.error) throw res.error;
+    for (const r of (res.data ?? []) as unknown as Omit<Place, "distance_m">[]) out.set(r.id, { ...r, distance_m: 0 });
   }
   return out;
 }
