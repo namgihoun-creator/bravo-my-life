@@ -103,6 +103,66 @@ type Fetched = { key: string; places: Place[]; error: boolean; staleAt: number |
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+/** '주변 주차장' 기준점(노포). 이 좌표 반경 500m(0건이면 800m) 안의 공영주차장을 가게 기준 거리순으로 보여준다. */
+interface Anchor {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** 돌아갈 때 복원할 노포 모드 필터 */
+  returnFilter: string;
+}
+
+const ANCHOR_RADII = [500, 800];
+
+function useAnchorParking(anchor: Anchor | null, nonce: number) {
+  const [res, setRes] = useState<{ key: string; places: Place[]; radius: number; error: boolean } | null>(null);
+  const lat = anchor?.lat;
+  const lng = anchor?.lng;
+  const key = lat === undefined || lng === undefined ? null : `${lat},${lng},${nonce}`;
+
+  useEffect(() => {
+    if (!key || lat === undefined || lng === undefined) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const query = async (radius: number) => {
+      const { data, error } = await getSupabase()
+        .rpc("bml_get_nearby_places", { p_lat: lat, p_lng: lng, p_radius_m: radius, p_mode: "survival", p_limit: 300 })
+        .abortSignal(ctrl.signal);
+      if (error) throw error;
+      return ((data ?? []) as Place[]).filter((p) => p.category === "parking"); // RPC는 가게 기준 거리순
+    };
+    (async () => {
+      try {
+        let radius = ANCHOR_RADII[0];
+        let places = await query(radius);
+        if (places.length === 0) {
+          radius = ANCHOR_RADII[1];
+          places = await query(radius);
+        }
+        if (!cancelled) setRes({ key, places, radius, error: false });
+      } catch (e) {
+        if (!cancelled) {
+          console.error("anchor parking", e);
+          setRes({ key, places: [], radius: ANCHOR_RADII[0], error: true });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [key, lat, lng]);
+
+  const ready = key !== null && res !== null && res.key === key;
+  return {
+    loading: key !== null && !ready,
+    error: ready && res.error,
+    places: ready ? res.places : EMPTY,
+    radius: ready ? res.radius : ANCHOR_RADII[0],
+  };
+}
+
 function useNearby(loc: Loc, nonce: number, refresh: number) {
   const [result, setResult] = useState<Fetched | null>(null);
   const loadedKey = useRef<string | null>(null); // 마지막으로 성공적으로 불러온 key
@@ -399,6 +459,8 @@ function PlaceCard({
   all,
   highlighted,
   onShowParking,
+  onAnchorParking,
+  anchorName,
   nowMs,
   origin,
   onAddTip,
@@ -407,6 +469,10 @@ function PlaceCard({
   all: Place[];
   highlighted: boolean;
   onShowParking: (parkingId: string) => void;
+  /** 노포 카드 '주변 주차장': 이 가게를 기준점으로 주변 공영주차장 보기 */
+  onAnchorParking: (place: Place) => void;
+  /** 기준점(노포) 이름: 있으면 거리를 '가게에서 도보 N분'으로 표시 */
+  anchorName?: string;
   /** 현재 시각(ms, 분 단위). 영업 중 상태 점 표시에 쓴다. */
   nowMs: number;
   /** 길찾기 출발지(현재 기준 위치). 네이버지도 웹 경로의 출발지 입력에 쓴다. */
@@ -459,6 +525,9 @@ function PlaceCard({
       )}
 
       <p className="tnum mt-1 text-distance font-extrabold tracking-[-0.02em] text-primary">
+        {anchorName && (
+          <span className="text-label font-semibold text-muted [overflow-wrap:anywhere]">{anchorName}에서 </span>
+        )}
         도보 {walkMinutes(place.distance_m)}분
         <span className="ml-1.5 text-label font-semibold text-muted">
           · {dist >= 1000 ? `${(dist / 1000).toFixed(1)}km` : `${dist}m`}
@@ -577,6 +646,15 @@ function PlaceCard({
           <PencilLine size={14} aria-hidden />
           {hasField ? "현장 정보 수정" : "현장 정보 추가"}
         </button>
+        {place.mode === "nopo" && (
+          <button
+            onClick={() => onAnchorParking(place)}
+            className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-ink active:opacity-80"
+          >
+            <CategoryIcon k="parking" />
+            주변 주차장
+          </button>
+        )}
       </div>
 
       <div className="mt-3 flex gap-2">
@@ -662,7 +740,13 @@ export default function Home() {
   const [tipTarget, setTipTarget] = useState<Place | null>(null); // '현장 정보 추가' 시트 대상
   const [patches, setPatches] = useState<Record<string, PlaceFeedback>>({}); // 내가/다른 기기가 방금 바꾼 feedback
 
-  const { loading, error, places: fetched, staleAt } = useNearby(loc, nonce, refresh);
+  const [anchor, setAnchor] = useState<Anchor | null>(null); // '주변 주차장' 기준 노포 (null이면 평소 화면)
+  const nearby = useNearby(loc, nonce, refresh);
+  const anchorData = useAnchorParking(anchor, nonce);
+  const loading = anchor ? anchorData.loading : nearby.loading;
+  const error = anchor ? anchorData.error : nearby.error;
+  const fetched = anchor ? anchorData.places : nearby.places;
+  const staleAt = anchor ? null : nearby.staleAt;
   // 조회 결과 위에 최신 현장 정보(내 등록 + 실시간 수신)를 덮어쓴다
   const all = useMemo(
     () => fetched.map((p) => (patches[p.id] ? { ...p, feedback: patches[p.id] } : p)),
@@ -750,16 +834,19 @@ export default function Home() {
   const requestGps = useCallback(async () => {
     const p = await getGps();
     if (!p) return false;
+    setAnchor(null);
     setLoc({ kind: "gps", name: "현재 위치", ...p });
     return true;
   }, []);
 
   const pickLocation = (l: PickedLocation) => {
+    setAnchor(null);
     setLoc({ kind: "search", ...l });
     setSheetOpen(false);
   };
 
   const changeMode = (m: Mode) => {
+    setAnchor(null);
     setMode(m);
     setFilter("all");
     setSelectedId(null);
@@ -779,6 +866,7 @@ export default function Home() {
       return;
     }
     setSelectedId(null);
+    setAnchor(null);
     setLoc({ kind: "search", name: "지도에서 고른 위치", lat: c.lat, lng: c.lng });
   };
 
@@ -786,6 +874,30 @@ export default function Home() {
     setView(v);
     setSelectedId(null);
     if (v === "map") window.scrollTo({ top: 0 });
+  };
+
+  // 노포 카드 '주변 주차장': 이 가게 좌표를 기준점으로 생존 모드 > 공영주차장을 연다
+  const startAnchor = (p: Place) => {
+    setAnchor({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, returnFilter: filter });
+    setMode("survival");
+    setFilter("parking");
+    setOpenOnly(false);
+    setSelectedId(null);
+    setHighlightId(null);
+    window.scrollTo({ top: 0 });
+  };
+
+  // '노포로 돌아가기': 기준점을 풀고 원래 보던 노포 목록(기존 위치 기준)으로, 그 가게 카드로 복귀한다
+  const endAnchor = () => {
+    if (!anchor) return;
+    const back = anchor;
+    setAnchor(null);
+    setMode("nopo");
+    setFilter(back.returnFilter);
+    setOpenOnly(false);
+    setSelectedId(null);
+    setScrollTargetId(null);
+    window.setTimeout(() => setScrollTargetId(back.id), 50);
   };
 
   const showParking = (parkingId: string) => {
@@ -827,8 +939,13 @@ export default function Home() {
   // 0건인 필터 칩은 숨기고, 선택돼 있던 필터가 0건이 되면 '전체'로 돌린다. (useMemo: 지도가 불필요하게 다시 그려지지 않게 참조 유지)
   // 찜 거리 재계산용 기준 위치 (참조가 loc가 바뀔 때만 바뀌게 한다)
   const centerPoint = useMemo(
-    () => (loc.kind === "pending" ? null : { lat: loc.lat, lng: loc.lng }),
-    [loc],
+    () =>
+      anchor
+        ? { lat: anchor.lat, lng: anchor.lng }
+        : loc.kind === "pending"
+          ? null
+          : { lat: loc.lat, lng: loc.lng },
+    [loc, anchor],
   );
   // 현재 모드에 영업시간이 확인된(상태가 true/false) 장소가 하나도 없으면 '지금 영업 중' 칩을 숨긴다 (빈 결과 유입 방지)
   const hasKnownHours = useMemo(
@@ -893,8 +1010,9 @@ export default function Home() {
     loc.kind === "pending"
       ? undefined
       : { lat: loc.lat, lng: loc.lng, label: loc.kind === "gps" ? "내 위치" : loc.name };
-  const center =
-    loc.kind === "pending"
+  const center = anchor
+    ? { lat: anchor.lat, lng: anchor.lng, name: anchor.name }
+    : loc.kind === "pending"
       ? null
       : { lat: loc.lat, lng: loc.lng, name: loc.kind === "gps" ? "현재 위치" : loc.name };
 
@@ -950,6 +1068,24 @@ export default function Home() {
           />
           <ViewToggle view={view} onChange={changeView} />
         </div>
+        {anchor && (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-xl border border-primary bg-surface pl-3 text-caption font-semibold text-ink"
+          >
+            <MapPin size={14} strokeWidth={2} className="shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              {anchor.name} 주변 공영주차장
+              <span className="max-[359px]:hidden"> · 반경 {anchorData.radius}m</span>
+            </span>
+            <button
+              onClick={endAnchor}
+              className="min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap px-3 text-caption font-bold text-primary active:opacity-70"
+            >
+              노포로 돌아가기
+            </button>
+          </div>
+        )}
       </div>
 
       <main
@@ -991,6 +1127,8 @@ export default function Home() {
                 all={all}
                 highlighted={false}
                 onShowParking={showParking}
+                onAnchorParking={startAnchor}
+                anchorName={anchor?.name}
                 nowMs={nowMs}
                 origin={origin}
                 onAddTip={setTipTarget}
@@ -1002,6 +1140,8 @@ export default function Home() {
             <p className="text-body text-muted">
               {activeFilter === "fav" && favCount === 0
                 ? "아직 찜한 장소가 없어요. 카드의 하트를 눌러 담아 보세요."
+                : anchor && activeFilter === "parking"
+                ? `${anchor.name} 반경 800m 안에 등록된 공영주차장이 없어요.`
                 : !openActive && EMPTY_MESSAGE[activeFilter]
                 ? EMPTY_MESSAGE[activeFilter]
                 : openActive
@@ -1037,6 +1177,8 @@ export default function Home() {
               all={all}
               highlighted={p.id === highlightId}
               onShowParking={showParking}
+              onAnchorParking={startAnchor}
+              anchorName={anchor?.name}
               nowMs={nowMs}
               origin={origin}
               onAddTip={setTipTarget}
