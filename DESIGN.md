@@ -282,6 +282,6 @@
 
 ## 17. 최상단 슬림 바로가기 추가 바·안내 시트
 - 페이지 최상단(메인 헤더 바로 위), 높이 48px·풀폭. 배경 `#EFF6FF`, 하단 1px `#DBEAFE`. 헤더는 원래의 컴팩트한 높이(72px)를 유지한다(바로가기/설치 버튼을 헤더 안에 두지 않는다).
-- 좌측: 앱 아이콘 26×26(둥근 모서리, `/icons/icon-192.png`) + `홈 화면에 바로가기 추가`(13px/`font-medium`, 한 줄·말줄임). 우측: `추가` 알약(`#1D4ED8`, 13px/`font-semibold`, 버튼 터치 높이 44px) + `✕` 닫기 44×44.
-- 숨김 조건: standalone(`display-mode`/`navigator.standalone`), 설치 완료(`appinstalled`), 이번 세션에서 `✕`(sessionStorage `bml_install_bar_closed`). 닫으면 헤더가 즉시 위로 올라온다.
+- 좌측: 앱 아이콘 24×24(둥근 모서리, `/icons/icon-192.png`) + `홈 화면에 바로가기 추가`(13px/`font-medium`/`#1E293B`, 한 줄·`whitespace-nowrap`). 우측(순서 중요): `닫기`(배경·테두리 없는 텍스트 버튼, 13px/`font-medium`/`#64748B`, 좌우 패딩 10px, 터치 높이 44px) → `추가`(`#1D4ED8` 알약, 시각 높이 32px·좌우 패딩 14px·13px/`font-semibold`/흰색, 터치 높이 44px)가 바의 우측 끝(여백 12px). X 아이콘은 쓰지 않는다. 360px에서 문구 192px 폭으로 잘림·줄바꿈 없음.
+- 숨김 조건: standalone(`display-mode`/`navigator.standalone`), 설치 완료(`appinstalled`), 이번 세션에서 `닫기`(sessionStorage `bml_install_bar_closed`). 닫으면 헤더가 즉시 위로 올라온다.
 - `추가`: 저장된 `beforeinstallprompt`가 있으면 `prompt()`, 없으면 안내 시트. 시트 제목은 `홈 화면에 바로가기 추가`, 보조 문구로 "앱스토어 설치가 아니라 바탕화면에 바로 열 수 있는 아이콘을 추가"함을 알린다. 틀은 동네 설정 시트와 같은 바텀 시트: 번호 원(primary)+문장+아이콘 칩의 2단계(안드로이드 ⋮ → 홈 화면에 추가 → 설치 / 아이폰 공유 □↑ → 홈 화면에 추가), 하단 `확인했어요` 48px. 이 바는 모드(생존/노포)와 무관하게 고정 색을 쓴다.

@@ -32,11 +32,11 @@ export default function InstallBar() {
         <div
           role="region"
           aria-label="바로가기 추가 안내"
-          className="flex h-12 w-full items-center gap-2 border-b border-[#DBEAFE] bg-[#EFF6FF] pl-4 pr-1"
+          className="flex h-12 w-full items-center gap-2 border-b border-[#DBEAFE] bg-[#EFF6FF] pl-4 pr-3"
         >
           <span
             aria-hidden
-            className="h-[26px] w-[26px] shrink-0 rounded-md bg-cover bg-center"
+            className="h-6 w-6 shrink-0 rounded-md bg-cover bg-center"
             style={{ backgroundImage: "url(/icons/icon-192.png)" }}
           />
           <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[#1E293B]">
@@ -44,20 +44,19 @@ export default function InstallBar() {
           </p>
           <button
             type="button"
-            onClick={onInstall}
-            className="flex min-h-[44px] shrink-0 cursor-pointer items-center px-1 active:opacity-80"
+            onClick={dismissInstallBar}
+            className="flex min-h-[44px] shrink-0 cursor-pointer items-center whitespace-nowrap px-[10px] text-[13px] font-medium text-[#64748B] active:opacity-70"
           >
-            <span className="rounded-full bg-[#1D4ED8] px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white">
-              추가
-            </span>
+            닫기
           </button>
           <button
             type="button"
-            onClick={dismissInstallBar}
-            aria-label="바로가기 추가 안내 닫기"
-            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-[#475569]"
+            onClick={onInstall}
+            className="flex min-h-[44px] shrink-0 cursor-pointer items-center active:opacity-80"
           >
-            <X size={18} aria-hidden />
+            <span className="flex h-8 items-center whitespace-nowrap rounded-full bg-[#1D4ED8] px-[14px] text-[13px] font-semibold leading-none text-white">
+              추가
+            </span>
           </button>
         </div>
       )}
