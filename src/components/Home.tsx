@@ -419,13 +419,13 @@ function FilterChips({
 function FeedbackChip({
   placeId,
   chipKey,
-  emoji,
+  icon,
   label,
   count,
 }: {
   placeId: string;
   chipKey: string;
-  emoji: string;
+  icon: string;
   label: string;
   count: number;
 }) {
@@ -469,11 +469,11 @@ function FeedbackChip({
       disabled={pending}
       aria-label={`${label} ${serverCount}명, ${voted ? "투표함 · 누르면 취소" : "누르면 추가"}`}
       onClick={toggle}
-      className={`theme-t tnum inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border px-3 text-caption font-semibold active:scale-[0.97] disabled:cursor-wait ${
+      className={`theme-t tnum inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-full border px-3 text-caption font-semibold active:scale-[0.97] disabled:cursor-wait ${
         voted ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
       }`}
     >
-      <span aria-hidden>{emoji}</span>
+      <CategoryIcon k={icon} />
       {label} {serverCount}
     </button>
   );
@@ -632,7 +632,10 @@ function PlaceCard({
           {open.reason}
         </p>
       ) : null}
-      <p className={`${statusRow ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
+      {/* 화장실·세차장은 '이용 정보' 칩(개방·운영시간, 편의시설, 휴무)과 같은 말을 반복하는 요약 문장을 숨긴다 */}
+      {!(showMeta && meta.hours) && (
+        <p className={`${statusRow ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
+      )}
 
       {hasField && (
         <div className="mt-2 space-y-1.5" aria-label="현장 정보">
@@ -672,7 +675,7 @@ function PlaceCard({
             key={c.key}
             placeId={place.id}
             chipKey={c.key}
-            emoji={c.emoji}
+            icon={c.icon}
             label={c.label}
             count={feedbackCount(place, c.key)}
           />
@@ -820,7 +823,7 @@ function PlaceCard({
           onClick={() => onShowParking(near.parking.id)}
           className="theme-t mt-2 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-transparent px-3 text-label font-semibold text-primary active:scale-[0.98]"
         >
-          <span aria-hidden>🅿️</span>
+          <CategoryIcon k="parking" size={16} />
           인근 공영주차장 보기 · 도보 {near.walkMin}분
         </button>
       )}

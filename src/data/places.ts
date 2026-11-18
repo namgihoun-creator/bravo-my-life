@@ -89,44 +89,45 @@ export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
 
 export interface FeedbackChipDef {
   key: string;
-  emoji: string;
+  /** CategoryIcon 키 (이모지는 쓰지 않는다 — 라인 아이콘으로 통일) */
+  icon: string;
   label: string;
 }
 
 const NOPO_CHIPS: FeedbackChipDef[] = [
-  { key: "visit", emoji: "🍚", label: "실방문 확인" },
-  { key: "again", emoji: "👍", label: "또 가고 싶다" },
+  { key: "visit", icon: "fb:meal", label: "실방문 확인" },
+  { key: "again", icon: "fb:thumbs", label: "또 가고 싶다" },
 ];
 
 /** 카테고리별 원클릭 현장 피드백 칩 (key는 DB feedback jsonb 키) */
 export const FEEDBACK_CHIPS: Record<string, FeedbackChipDef[]> = {
   laundry: [
-    { key: "ok", emoji: "👍", label: "방금 정상이용" },
-    { key: "wait", emoji: "⏳", label: "대기 있음" },
+    { key: "ok", icon: "fb:thumbs", label: "방금 정상이용" },
+    { key: "wait", icon: "fb:hourglass", label: "대기 있음" },
   ],
   print: [
-    { key: "paper", emoji: "📄", label: "A4용지 충분" },
-    { key: "ok", emoji: "👍", label: "방금 정상이용" },
+    { key: "paper", icon: "fb:file", label: "A4용지 충분" },
+    { key: "ok", icon: "fb:thumbs", label: "방금 정상이용" },
   ],
   pharmacy: [
-    { key: "open", emoji: "🟢", label: "영업중 확인" },
-    { key: "ok", emoji: "👍", label: "방금 정상이용" },
+    { key: "open", icon: "fb:open", label: "영업중 확인" },
+    { key: "ok", icon: "fb:thumbs", label: "방금 정상이용" },
   ],
   parking: [
-    { key: "space", emoji: "🅿️", label: "빈자리 있음" },
-    { key: "full", emoji: "🚫", label: "만차" },
+    { key: "space", icon: "fb:space", label: "빈자리 있음" },
+    { key: "full", icon: "fb:full", label: "만차" },
   ],
   carwash: [
-    { key: "ok", emoji: "👍", label: "방금 정상이용" },
-    { key: "wait", emoji: "⏳", label: "대기 있음" },
+    { key: "ok", icon: "fb:thumbs", label: "방금 정상이용" },
+    { key: "wait", icon: "fb:hourglass", label: "대기 있음" },
   ],
   battery: [
-    { key: "stock", emoji: "🔋", label: "재고 있음" },
-    { key: "ok", emoji: "👍", label: "방금 정상이용" },
+    { key: "stock", icon: "fb:battery", label: "재고 있음" },
+    { key: "ok", icon: "fb:thumbs", label: "방금 정상이용" },
   ],
   toilet: [
-    { key: "open", emoji: "🟢", label: "이용 가능" },
-    { key: "locked", emoji: "🔒", label: "잠겨있음" },
+    { key: "open", icon: "fb:open", label: "이용 가능" },
+    { key: "locked", icon: "fb:locked", label: "잠겨있음" },
   ],
   soup: NOPO_CHIPS,
   pocha: NOPO_CHIPS,
