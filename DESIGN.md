@@ -279,3 +279,7 @@
 ## 16. 세차장·화장실 이용 정보
 - 카드 거리 줄 아래 `이용 정보` 행: 세차유형(`bg-accent`, 유형이 '세차장' 일반이면 숨김) · 운영/개방시간(`border-line bg-bg`, `tnum`) · 휴무(`border-danger text-danger`, 정기휴무 현장 정보가 있으면 중복 표시 안 함) · 편의시설(`border-line text-muted`).
 - 칩 `🚗 세차장`은 핵심 칩이라 0건이어도 노출한다. 길찾기 경로는 주차장·세차장=자동차.
+
+## 17. 앱 설치 버튼·안내 시트
+- 헤더 부제 아래 `앱 설치`(`min-h-44px`, pill, `border-primary text-primary bg-surface`, 아이콘 16px, 한 줄 `whitespace-nowrap`). 설치된 앱에서는 렌더하지 않아 헤더가 줄어든다.
+- 안내 시트: 동네 설정 시트와 같은 바텀 시트 틀(`sheet-up`, grabber, 닫기 44px). 번호 원(primary)+문장+아이콘 칩의 2단계 목록, 안드로이드(⋮ → 홈 화면에 추가 → 설치)·아이폰(공유 □↑ → 홈 화면에 추가), 하단 `확인했어요` 48px.

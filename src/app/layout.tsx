@@ -36,6 +36,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko" data-mode="survival" className="h-full">
       <head>
+        {/* beforeinstallprompt 는 hydrate 전에 올 수 있어 먼저 잡아 둔다(앱 설치 버튼이 window.__bip 를 사용) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__bip=e;});",
+          }}
+        />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         <link
           rel="stylesheet"
