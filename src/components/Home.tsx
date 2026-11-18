@@ -131,23 +131,22 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
     }
 
     const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-    getSupabase()
-      .rpc("bml_get_nearby_places", {
-        p_lat: lat,
-        p_lng: lng,
-        p_radius_m: RADIUS_M,
-        p_mode: null,
-        p_limit: 300,
-      })
-      .abortSignal(ctrl.signal)
-      .then(({ data, error }) => {
+    // 모드별로 따로 조회해 한쪽(예: 노포 수백 곳)이 limit을 먼저 채워 다른 쪽이 잘리지 않게 한다
+    const supabase = getSupabase();
+    const fetchMode = (m: Mode) =>
+      supabase
+        .rpc("bml_get_nearby_places", { p_lat: lat, p_lng: lng, p_radius_m: RADIUS_M, p_mode: m, p_limit: 400 })
+        .abortSignal(ctrl.signal);
+    Promise.all([fetchMode("survival"), fetchMode("nopo")])
+      .then(([sv, np]) => {
         window.clearTimeout(timer);
         if (cancelled) return;
+        const error = sv.error ?? np.error;
         if (error) {
           console.error("bml_get_nearby_places", error);
           return fallback();
         }
-        const places = (data ?? []) as Place[];
+        const places = [...((sv.data ?? []) as Place[]), ...((np.data ?? []) as Place[])];
         saveNearby(lat, lng, places);
         loadedKey.current = key;
         setResult({ key, places, error: false, staleAt: null });
@@ -238,6 +237,15 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
   );
 }
 
+/** 0건이어도 칩을 숨기지 않는 핵심 카테고리 */
+const CORE_SURVIVAL_KEYS = ["toilet", "parking"];
+const isCoreChip = (mode: Mode, key: string) => mode === "survival" && CORE_SURVIVAL_KEYS.includes(key);
+
+const EMPTY_MESSAGE: Record<string, string> = {
+  toilet: "반경 내 등록된 개방화장실이 없어요. 지도를 넓혀 다시 찾아보세요",
+  parking: "반경 내 등록된 공영주차장이 없어요. 지도를 넓혀 다시 찾아보세요",
+};
+
 function FilterChips({
   mode,
   value,
@@ -271,8 +279,9 @@ function FilterChips({
   }, [mode, value]);
 
   // '찜' 칩은 0건이어도 항상 보인다(발견 가능성). 나머지는 0건이면 숨긴다.
+  // 생존 모드 핵심 카테고리(개방화장실·공영주차장)는 0건이어도 칩을 보여 주고, 눌렀을 때 안내 문구를 띄운다.
   const chips = FILTERS[mode].filter(
-    (f) => !counts || f.key === "all" || f.key === "fav" || counts[f.key] > 0,
+    (f) => !counts || f.key === "all" || f.key === "fav" || isCoreChip(mode, f.key) || counts[f.key] > 0,
   );
   const openLabel = mode === "survival" ? "지금 이용 가능(24시)" : "지금 영업 중";
 
@@ -857,7 +866,7 @@ export default function Home() {
             fav: favBase.length,
           };
     // 찜 칩은 0건이어도 누르면 그대로 활성(빈 안내 표시) — '전체'가 같이 켜진 것처럼 보이지 않게 한다
-    const activeFilter = filter === "fav" ? "fav" : counts && !counts[filter] ? "all" : filter;
+    const activeFilter = filter === "fav" ? "fav" : counts && !counts[filter] && !isCoreChip(mode, filter) ? "all" : filter;
     const unknownExcluded = openActive
       ? (activeFilter === "fav" ? favBase : base).filter(
           (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
@@ -993,6 +1002,8 @@ export default function Home() {
             <p className="text-body text-muted">
               {activeFilter === "fav" && favCount === 0
                 ? "아직 찜한 장소가 없어요. 카드의 하트를 눌러 담아 보세요."
+                : !openActive && EMPTY_MESSAGE[activeFilter]
+                ? EMPTY_MESSAGE[activeFilter]
                 : openActive
                 ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
                 : "반경 2km 안에 조건에 맞는 장소가 아직 없어요."}

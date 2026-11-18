@@ -104,6 +104,10 @@ SURVIVAL_QUERIES = [
     # 개방화장실
     ("개방화장실", "toilet"),
     ("공중화장실", "toilet"),
+    ("공공화장실", "toilet"),
+    ("지하철역 화장실", "toilet"),
+    ("공원 화장실", "toilet"),
+    ("개방화장실 무료", "toilet"),
     # 보조배터리
     ("보조배터리 대여", "battery"),
     ("보조배터리", "battery"),
