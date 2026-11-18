@@ -103,3 +103,40 @@ export async function promptInstall(): Promise<boolean> {
   }
   return true;
 }
+
+/* ───────────── 상단 설치 바 닫힘 상태 (세션 동안 유지) ───────────── */
+const DISMISS_KEY = "bml_install_bar_closed";
+const dismissListeners = new Set<() => void>();
+
+function readDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(DISMISS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function dismissInstallBar() {
+  try {
+    sessionStorage.setItem(DISMISS_KEY, "1");
+  } catch {
+    /* 저장이 막혀도 이번 화면에서는 닫힌 채 유지(아래 메모리 플래그) */
+  }
+  memoryDismissed = true;
+  dismissListeners.forEach((l) => l());
+}
+
+let memoryDismissed = false;
+
+export function useInstallBarDismissed(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      dismissListeners.add(cb);
+      return () => {
+        dismissListeners.delete(cb);
+      };
+    },
+    () => memoryDismissed || readDismissed(),
+    () => true, // 서버·hydrate 직전에는 숨김 → 닫은 사용자가 새로고침해도 깜빡이지 않는다
+  );
+}

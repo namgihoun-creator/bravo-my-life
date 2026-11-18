@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, EllipsisVertical, PlusSquare, Share, X } from "lucide-react";
-import { promptInstall, useInstallState } from "@/lib/install";
+import { EllipsisVertical, PlusSquare, Share, X } from "lucide-react";
+import { dismissInstallBar, promptInstall, useInstallBarDismissed, useInstallState } from "@/lib/install";
 
 const isIos = () => typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-/** 헤더의 '앱 설치' 버튼 + 설치 안내 바텀 시트. 설치된 앱(standalone)에서는 아무것도 그리지 않는다. */
-export default function InstallApp() {
+/**
+ * 최상단 슬림 앱 설치 바(48px). 설치된 앱(standalone)이거나 이번 세션에서 닫았다면 그리지 않는다.
+ * '설치': 저장된 beforeinstallprompt 가 있으면 기본 설치 다이얼로그, 없으면 OS별 안내 시트.
+ */
+export default function InstallBar() {
   const { installed } = useInstallState();
+  const dismissed = useInstallBarDismissed();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -18,22 +22,45 @@ export default function InstallApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (installed) return null;
-
-  const onClick = async () => {
-    // 저장된 설치 이벤트가 있으면 안드로이드 기본 설치 다이얼로그, 없으면(아이폰·재설치 대기) 안내 시트
+  const onInstall = async () => {
     if (!(await promptInstall())) setOpen(true);
   };
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onClick}
-        className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-primary bg-surface px-3.5 text-label font-bold text-primary active:opacity-80"
-      >
-        <Download size={16} aria-hidden />앱 설치
-      </button>
+      {!installed && !dismissed && (
+        <div
+          role="region"
+          aria-label="앱 설치 안내"
+          className="flex h-12 w-full items-center gap-2 border-b border-[#DBEAFE] bg-[#EFF6FF] pl-4 pr-1"
+        >
+          <span
+            aria-hidden
+            className="h-[26px] w-[26px] shrink-0 rounded-md bg-cover bg-center"
+            style={{ backgroundImage: "url(/icons/icon-192.png)" }}
+          />
+          <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[#1E293B]">
+            앱으로 설치해 더 빠르게 열기
+          </p>
+          <button
+            type="button"
+            onClick={onInstall}
+            className="flex min-h-[44px] shrink-0 cursor-pointer items-center px-1 active:opacity-80"
+          >
+            <span className="rounded-full bg-[#1D4ED8] px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white">
+              설치
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={dismissInstallBar}
+            aria-label="설치 안내 닫기"
+            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-[#475569]"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+      )}
       {open && <InstallSheet onClose={() => setOpen(false)} />}
     </>
   );

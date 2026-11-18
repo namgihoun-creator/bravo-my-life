@@ -45,7 +45,7 @@ import { readNearby, saveNearby } from "@/lib/placeCache";
 import { getSupabase } from "@/lib/supabase";
 import { useMinuteClock } from "@/lib/useMinuteClock";
 import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
-import InstallApp from "@/components/InstallApp";
+import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
 import FieldTipSheet from "./FieldTipSheet";
@@ -929,6 +929,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md">
+      <InstallBar />
       <header className="px-4 pt-[max(20px,env(safe-area-inset-top))]">
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -936,9 +937,6 @@ export default function Home() {
               Bravo My Life
             </h1>
             <p className="mt-0.5 text-label text-muted">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
-            <div className="mt-2 empty:hidden">
-              <InstallApp />
-            </div>
           </div>
           <LocationBadge loc={loc} onClick={() => setSheetOpen(true)} />
         </div>
