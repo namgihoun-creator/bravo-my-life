@@ -279,6 +279,7 @@ function FilterChips({
   const openChip = (
     <button
       key="open-now"
+      data-filter-chip
       aria-pressed={openOnly}
       onClick={onToggleOpen}
       className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
@@ -756,7 +757,9 @@ export default function Home() {
     setSelectedId(null);
   };
 
+  // 칩은 항상 1개만 활성: 카테고리/연차/찜을 고르면 '지금 영업 중'은 꺼진다
   const changeFilter = (k: string) => {
+    setOpenOnly(false);
     setFilter(k);
     setSelectedId(null);
   };
@@ -853,8 +856,8 @@ export default function Home() {
             ),
             fav: favBase.length,
           };
-    const favMode = filter === "fav" && favBase.length > 0;
-    const activeFilter = favMode ? "fav" : counts && !counts[filter] ? "all" : filter === "fav" ? "all" : filter;
+    // 찜 칩은 0건이어도 누르면 그대로 활성(빈 안내 표시) — '전체'가 같이 켜진 것처럼 보이지 않게 한다
+    const activeFilter = filter === "fav" ? "fav" : counts && !counts[filter] ? "all" : filter;
     const unknownExcluded = openActive
       ? (activeFilter === "fav" ? favBase : base).filter(
           (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
@@ -923,14 +926,16 @@ export default function Home() {
         <div className="flex items-center gap-2">
           <FilterChips
             mode={mode}
-            value={activeFilter}
+            value={openActive ? "open-now" : activeFilter}
             counts={counts}
             favCount={favCount}
             onChange={changeFilter}
             showOpenChip={hasKnownHours}
             openOnly={openActive}
             onToggleOpen={() => {
-              setOpenOnly((v) => !v);
+              // '지금 영업 중'을 켜면 전체 기준으로 보며 다른 칩의 활성 표시는 꺼진다
+              if (!openActive) setFilter("all");
+              setOpenOnly(!openActive);
               setSelectedId(null);
             }}
           />
@@ -986,7 +991,9 @@ export default function Home() {
         ) : places.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-body text-muted">
-              {openActive
+              {activeFilter === "fav" && favCount === 0
+                ? "아직 찜한 장소가 없어요. 카드의 하트를 눌러 담아 보세요."
+                : openActive
                 ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
                 : "반경 2km 안에 조건에 맞는 장소가 아직 없어요."}
             </p>
