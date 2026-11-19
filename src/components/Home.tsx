@@ -49,6 +49,7 @@ import CoupleSheet from "@/components/CoupleSheet";
 import HScroll from "@/components/HScroll";
 import Link from "next/link";
 import AddressLine from "@/components/AddressLine";
+import Footer from "@/components/Footer";
 import { getOpenState } from "@/lib/openStatus";
 import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
@@ -1544,6 +1545,8 @@ export default function Home() {
           </p>
         </div>
       </main>
+
+      <Footer />
 
 
       {coupleOpen && <CoupleSheet onClose={() => setCoupleOpen(false)} />}

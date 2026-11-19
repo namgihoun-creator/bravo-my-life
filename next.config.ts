@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import pkg from "./package.json";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // 푸터의 버전 표기는 package.json 한 곳에서만 관리한다
+  env: { NEXT_PUBLIC_APP_VERSION: pkg.version },
   cacheComponents: true,
   partialPrefetching: true,
   // 서비스 워커는 항상 최신본을 받아야 배포 때 캐시 정책이 제때 갱신된다

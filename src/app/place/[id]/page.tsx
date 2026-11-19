@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Award, ChevronRight, TriangleAlert, UtensilsCrossed } from "lucide-react";
 import AddressLine from "@/components/AddressLine";
 import CategoryIcon from "@/components/CategoryIcon";
+import Footer from "@/components/Footer";
 import ModeAttr from "@/components/ModeAttr";
 import NavigationButton from "@/components/NavigationButton";
 import PlaceHours from "@/components/PlaceHours";
@@ -63,7 +64,8 @@ function PlaceDetail({ place }: { place: Place }) {
   const jsonLd = JSON.stringify(restaurantJsonLd(place)).replace(/</g, "\\u003c");
 
   return (
-    <main className="mx-auto w-full max-w-md px-4 pb-10 pt-3 md:max-w-2xl">
+    <div className="mx-auto w-full max-w-md md:max-w-2xl">
+    <main className="px-4 pb-4 pt-3">
       <ModeAttr mode="nopo" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
 
@@ -151,8 +153,9 @@ function PlaceDetail({ place }: { place: Place }) {
       >
         지도에서 주변 노포 더 보기
       </Link>
-      <p className="mt-3 text-center text-caption text-muted">Bravo My Life · 광고 없는 진짜 로컬 노포 가이드</p>
     </main>
+    <Footer />
+    </div>
   );
 }
 
