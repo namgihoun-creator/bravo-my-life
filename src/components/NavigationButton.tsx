@@ -1,5 +1,6 @@
 "use client";
 
+import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, X } from "lucide-react";
@@ -38,6 +39,7 @@ function NavAppSheet({
 }) {
   const firstRef = useRef<HTMLButtonElement>(null);
 
+  useModalHistory(onClose);
   useEffect(() => {
     firstRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

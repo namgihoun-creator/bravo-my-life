@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useModalHistory } from "@/lib/useModalHistory";
 import { EllipsisVertical, PlusSquare, Share, X } from "lucide-react";
 import { dismissInstallBar, promptInstall, useInstallBarDismissed, useInstallState } from "@/lib/install";
 
@@ -14,6 +15,8 @@ export default function InstallBar() {
   const { installed } = useInstallState();
   const dismissed = useInstallBarDismissed();
   const [open, setOpen] = useState(false);
+
+  useModalHistory(() => setOpen(false), open);
 
   useEffect(() => {
     if (!open) return;

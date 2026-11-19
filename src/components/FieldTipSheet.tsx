@@ -1,5 +1,6 @@
 "use client";
 
+import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useRef, useState } from "react";
 import { Clock3, TriangleAlert, X } from "lucide-react";
 import { DAY_CHARS, fieldInfo, type IssueType, type Place, type PlaceFeedback } from "@/data/places";
@@ -101,6 +102,7 @@ export default function FieldTipSheet({
   const [error, setError] = useState<string | null>(null);
   const firstRef = useRef<HTMLInputElement>(null);
 
+  useModalHistory(onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useRef, useState } from "react";
 import { Copy, HeartHandshake, Link2Off, Sparkles, X } from "lucide-react";
 import { CODE_RE, connectCouple, disconnectCouple, generateCode, normalizeCode, useCouple } from "@/lib/couple";
@@ -15,6 +16,7 @@ export default function CoupleSheet({ onClose }: { onClose: () => void }) {
   const norm = normalizeCode(input);
   const valid = CODE_RE.test(norm);
 
+  useModalHistory(onClose);
   useEffect(() => {
     if (!code) inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

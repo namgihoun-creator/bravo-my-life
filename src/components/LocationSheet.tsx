@@ -1,5 +1,6 @@
 "use client";
 
+import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useRef, useState } from "react";
 import { LocateFixed, MapPin, Search, X } from "lucide-react";
 import { HUBS } from "@/data/places";
@@ -29,6 +30,7 @@ export default function LocationSheet({
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useModalHistory(onClose);
   useEffect(() => {
     inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
