@@ -620,14 +620,21 @@ function PlaceCard({
       </ul>
 
       {open?.status ? (
-        <p className="mt-3 flex items-center gap-1.5 text-caption font-bold text-success">
-          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-success" />
-          {open.label}
+        <p className="mt-3 flex min-w-0 items-center gap-1.5 text-caption font-bold text-success">
+          {/* 블로그(LLM) 추정값은 속 빈 점 + 출처 문구로 공식 데이터와 구분한다. 색만으로 전달하지 않는다. */}
+          <span
+            aria-hidden
+            className={`shrink-0 rounded-full ${open.isLlm ? "h-2.5 w-2.5 border-2 border-success bg-transparent" : "h-2 w-2 bg-success"}`}
+          />
+          <span className="min-w-0">{open.isLlm ? `${open.label} · 블로그 기준` : open.label}</span>
         </p>
       ) : open?.reason ? (
-        <p className="mt-3 flex items-center gap-1.5 text-caption font-bold text-danger">
-          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-danger" />
-          {open.reason}
+        <p className="mt-3 flex min-w-0 items-center gap-1.5 text-caption font-bold text-danger">
+          <span
+            aria-hidden
+            className={`shrink-0 rounded-full ${open.isLlm ? "h-2.5 w-2.5 border-2 border-danger bg-transparent" : "h-2 w-2 bg-danger"}`}
+          />
+          <span className="min-w-0">{open.isLlm ? `${open.reason} · 블로그 기준` : open.reason}</span>
         </p>
       ) : null}
       {/* 화장실·세차장은 '이용 정보' 칩(개방·운영시간, 편의시설, 휴무)과 같은 말을 반복하는 요약 문장을 숨긴다 */}
@@ -849,6 +856,9 @@ function agoText(diffMs: number): string {
 }
 
 /* ───────────────────────── 메인 ───────────────────────── */
+
+/** 공식 데이터로 영업 여부를 아는 상태인가(LLM 추정은 '미확인'으로 센다) */
+const isOfficialKnown = (st: { status: boolean | null; isLlm?: boolean }) => st.status !== null && !st.isLlm;
 
 const noopSubscribe = () => () => {};
 const serverStartMode = (): Mode => "survival";
@@ -1122,7 +1132,7 @@ export default function Home() {
   );
   // 현재 모드에 영업시간이 확인된(상태가 true/false) 장소가 하나도 없으면 '지금 영업 중' 칩을 숨긴다 (빈 결과 유입 방지)
   const hasKnownHours = useMemo(
-    () => all.some((p) => p.mode === mode && isVisiblePlace(p) && getOpenState(p, nowMs).status !== null),
+    () => all.some((p) => p.mode === mode && isVisiblePlace(p) && isOfficialKnown(getOpenState(p, nowMs))),
     [all, mode, nowMs],
   );
   const openActive = openOnly && hasKnownHours;
@@ -1145,7 +1155,10 @@ export default function Home() {
     const favBase = toBase(Object.values(favorites));
     const visitedBase = toBase(Object.values(visited).map((v) => v.place)); // '다녀옴' 체크인 장소
     // '지금 영업 중'이 켜지면 확실히 이용 가능(true)한 곳만 남긴다. 모르는 곳(null)은 허위 표시 없이 제외한다.
-    const isOpen = (p: Place) => getOpenState(p, clock).status === true;
+    const isOpen = (p: Place) => {
+      const st = getOpenState(p, clock);
+      return st.status === true && !st.isLlm; // 블로그(LLM) 추정값은 필터에서 제외(보수적)
+    };
     const pool = openActive ? base.filter(isOpen) : base;
     const favPool = openActive ? favBase.filter(isOpen) : favBase;
     const visitedPool = openActive ? visitedBase.filter(isOpen) : visitedBase;
@@ -1173,7 +1186,7 @@ export default function Home() {
             : filter;
     const unknownExcluded = openActive
       ? (activeFilter === "fav" ? favBase : activeFilter === "visited" ? visitedBase : base).filter(
-          (p) => matchesFilter(p, activeFilter) && getOpenState(p, clock).status === null,
+          (p) => matchesFilter(p, activeFilter) && !isOfficialKnown(getOpenState(p, clock)),
         ).length
       : 0;
     return {

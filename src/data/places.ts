@@ -286,7 +286,7 @@ export function matchesFilter(p: Place, key: string): boolean {
 export function matchesQuery(p: Place, query: string): boolean {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return true;
-  const hay = [p.name, p.summary, p.address, ...(p.tags ?? []), ...(p.extra ?? [])]
+  const hay = [p.name, p.summary, p.address, ...(p.tags ?? []), ...(p.extra ?? []).filter((e) => !e.startsWith("llm_hours:"))]
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
