@@ -34,6 +34,23 @@ MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")  # 1.5/2.5-flash 는 
 PREFIX = "llm_hours:"
 DAYS = ["월", "화", "수", "목", "금", "토", "일"]
 OUT = Path(__file__).resolve().parent / "out" / "llm_hours_report.json"
+# 시도한 가게 id(성공·null·스니펫 없음)를 --apply 때만 기록해 다음 실행에서 건너뛴다(null 가게가 매번 앞줄로 뽑혀 한도를 낭비하는 것을 막는다). scripts/out/ 은 .gitignore 대상.
+TRIED = Path(__file__).resolve().parent / "out" / "llm_hours_tried.json"
+
+
+def load_tried() -> dict:
+    try:
+        d = json.loads(TRIED.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_tried(d: dict) -> None:
+    TRIED.parent.mkdir(parents=True, exist_ok=True)
+    tmp = TRIED.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=0), encoding="utf-8")
+    tmp.replace(TRIED)  # 원자적 교체: 중간에 죽어도 파일이 깨지지 않는다
 
 SYSTEM = """You are a strict information-extraction function for Korean restaurant opening hours.
 The user message is JSON: {"name", "address", "snippets": [blog search title|snippet texts]}.
@@ -177,6 +194,18 @@ def selftest() -> None:
     assert _is_daily_quota(Exception("Quota exceeded ... GenerateRequestsPerDayPerProjectPerModel-FreeTier"))
     assert not _is_daily_quota(Exception("GenerateRequestsPerMinutePerProjectPerModel-FreeTier"))
     assert _is_429(Exception("429 You exceeded your current quota"))
+    global TRIED
+    import tempfile
+    old = TRIED
+    try:
+        TRIED = Path(tempfile.mkdtemp()) / "t.json"
+        assert load_tried() == {}
+        save_tried({"a": {"status": "null"}})
+        assert load_tried() == {"a": {"status": "null"}}
+        TRIED.write_text("not json", encoding="utf-8")
+        assert load_tried() == {}  # 깨진 파일은 빈 기록으로
+    finally:
+        TRIED = old
     print("selftest OK")
 
 
@@ -257,7 +286,7 @@ def main() -> None:
     ap.add_argument("--apply", action="store_true", help="DB(extra)에 실제로 쓴다. 기본은 dry-run")
     ap.add_argument("--limit", type=int, default=0, help="무작위 N곳만(0=전체)")
     ap.add_argument("--seed", type=int, default=20261119)
-    ap.add_argument("--refresh", action="store_true", help="이미 llm_hours 가 있는 곳도 다시 처리")
+    ap.add_argument("--refresh", action="store_true", help="이미 llm_hours 가 있거나 이미 시도한 곳도 다시 처리(--apply 면 시도 기록을 새로 시작)")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest:
@@ -297,16 +326,28 @@ def main() -> None:
         if len(r) < 1000:
             break
         off += 1000
+    tried: dict = {} if args.refresh else load_tried()
     todo = [r for r in rows if not has_official_hours(r) and (args.refresh or not any(e.startswith(PREFIX) for e in r.get("extra") or []))]
-    random.Random(args.seed).shuffle(todo)
-    if args.limit:
-        todo = todo[: args.limit]
-    print(f"검증 노포 {len(rows)}곳 중 처리 대상 {len(todo)}곳 ({'APPLY' if args.apply else 'dry-run'}, model={MODEL})")
+    pending = [r for r in todo if r["id"] not in tried]
+    skipped_tried = len(todo) - len(pending)
+    random.Random(args.seed).shuffle(pending)
+    todo = pending[: args.limit] if args.limit else pending
+    print(f"검증 노포 {len(rows)}곳 중 미처리 {len(pending)}곳(이전 시도로 건너뜀 {skipped_tried}곳) → 이번 대상 {len(todo)}곳 ({'APPLY' if args.apply else 'dry-run'}, model={MODEL})")
+    if args.refresh and args.apply:
+        save_tried({})  # --refresh: 시도 기록 초기화
 
     stop = threading.Event()
     stop_msg: list[str] = []
     write_lock = threading.Lock()
     saved = [0]
+
+    def mark_tried(pid: str, status: str) -> None:
+        """--apply 일 때만 기록(dry-run 은 다음 실행에 영향을 주지 않는다). 건별로 즉시 저장."""
+        if not args.apply:
+            return
+        with write_lock:
+            tried[pid] = {"status": status, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            save_tried(tried)
 
     def work(row: dict) -> dict:
         base = {"id": row["id"], "name": row["name"]}
@@ -316,6 +357,7 @@ def main() -> None:
             sn, q = snippets_for(row)
             time.sleep(0.15)
             if not sn:
+                mark_tried(row["id"], "no-snippet")
                 return {**base, "status": "no-snippet"}
             raw = ask_llm(llm, row, sn)
         except QuotaExhausted as e:
@@ -337,6 +379,8 @@ def main() -> None:
             except Exception as e:  # noqa: BLE001
                 res["status"] = "error"
                 res["error"] = "DB 저장 실패: " + str(e)[:100]
+        if res["status"] in ("ok", "null"):
+            mark_tried(row["id"], res["status"])
         return res
 
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -349,7 +393,7 @@ def main() -> None:
     OUT.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"리포트: {OUT}")
     if args.apply:
-        print(f"extra 갱신 {saved[0]}곳 저장 완료(건별 즉시 저장)")
+        print(f"extra 갱신 {saved[0]}곳 저장 완료(건별 즉시 저장), 시도 기록 {len(tried)}곳 → {TRIED.name}")
     else:
         print("--apply 가 없어 DB에 쓰지 않았습니다.")
     if stop.is_set():

@@ -36,6 +36,11 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },
+  // 검색엔진 소유권 인증(공개 토큰). 구글 서치콘솔·네이버 서치어드바이저
+  verification: {
+    google: "Ob59aWoNWRKbybtWVc12U6DkpuD78OzUEg7XvOm4rSE",
+    other: { "naver-site-verification": "51ff567e74cbb67f2b8f6a0075d4c3de080c0f68" },
+  },
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
