@@ -1,21 +1,13 @@
 export type Mode = "survival" | "nopo";
 
-/** 현장 한 줄 팁 (최신순 최대 10개 중 하나) */
-export interface FieldTip {
-  t: string;
-  /** 작성 시각 (ISO, UTC) */
-  at: string;
-}
-
 /**
- * feedback JSONB: 현장 피드백 칩 카운트({"ok": 12}) + 현장 정보(정기휴무·영업시간·브레이크타임·팁).
- * 현장 정보는 `bml_add_place_tip` RPC가 갱신한다.
+ * feedback JSONB: 현장 피드백 칩 카운트({"ok": 12}) + 데이터 파이프라인이 넣는 운영 정보(정기휴무·영업시간·브레이크타임).
+ * (사용자 입력 '현장 팁'은 제거됨. 예약 키 `tips`는 DB에 남아 있을 수 있어 칩 카운트에서만 제외한다.)
  */
 export interface PlaceFeedback {
   closed_days?: string[];
   hours?: string;
   break_time?: string;
-  tips?: FieldTip[];
   [key: string]: unknown;
 }
 
@@ -308,7 +300,7 @@ export function foodLabel(p: Place): string | null {
   return e ? e.slice(5) : null;
 }
 
-/* ───────────── 현장 정보 (정기휴무 · 영업시간 · 브레이크타임 · 한 줄 팁) ───────────── */
+/* ───────────── 운영 정보 (정기휴무 · 영업시간 · 브레이크타임) ───────────── */
 
 export const DAY_CHARS = ["월", "화", "수", "목", "금", "토", "일"] as const;
 export const RESERVED_FEEDBACK_KEYS = ["closed_days", "hours", "break_time", "tips"];
@@ -317,18 +309,15 @@ export interface FieldInfo {
   closedDays: string[];
   hours: string | null;
   breakTime: string | null;
-  tip: FieldTip | null; // 가장 최근 팁
 }
 
 export function fieldInfo(p: Place): FieldInfo {
   const fb = p.feedback ?? {};
   const days = Array.isArray(fb.closed_days) ? fb.closed_days.filter((d): d is string => typeof d === "string") : [];
-  const tips = Array.isArray(fb.tips) ? fb.tips.filter((t) => t && typeof t.t === "string") : [];
   return {
     closedDays: days,
     hours: typeof fb.hours === "string" && fb.hours ? fb.hours : null,
     breakTime: typeof fb.break_time === "string" && fb.break_time ? fb.break_time : null,
-    tip: tips[0] ?? null,
   };
 }
 
@@ -336,19 +325,6 @@ export function fieldInfo(p: Place): FieldInfo {
 export function feedbackCount(p: Place, key: string): number {
   const v = p.feedback?.[key];
   return typeof v === "number" ? v : 0;
-}
-
-/** '3일 전' 같은 상대 시간 */
-export function timeAgo(iso: string, nowMs: number): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t) || nowMs <= 0) return "";
-  const min = Math.max(0, Math.round((nowMs - t) / 60_000));
-  if (min < 1) return "방금";
-  if (min < 60) return `${min}분 전`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h}시간 전`;
-  const d = Math.round(h / 24);
-  return d < 30 ? `${d}일 전` : `${Math.round(d / 30)}개월 전`;
 }
 
 /* ───────────── 공영주차장 요금 ───────────── */

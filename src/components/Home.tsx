@@ -9,7 +9,6 @@ import {
   Heart,
   LocateFixed,
   MapPin,
-  PencilLine,
   Search,
   X,
   List,
@@ -38,7 +37,6 @@ import {
   nearestParking,
   walkMinutes,
   yearsInBusiness,
-  timeAgo,
   type Mode,
   type Place,
   type PlaceFeedback,
@@ -59,7 +57,7 @@ import CategoryIcon from "@/components/CategoryIcon";
 import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
-import FieldTipSheet from "./FieldTipSheet";
+import IssueReportSheet from "./IssueReportSheet";
 import PlaceMap from "./PlaceMap";
 import NavigationButton from "./NavigationButton";
 import type { NavOrigin } from "@/lib/navigation";
@@ -485,7 +483,7 @@ function PlaceCard({
   anchorName,
   nowMs,
   origin,
-  onAddTip,
+  onReportIssue,
 }: {
   place: Place;
   all: Place[];
@@ -499,8 +497,8 @@ function PlaceCard({
   nowMs: number;
   /** 길찾기 출발지(현재 기준 위치). 네이버지도 웹 경로의 출발지 입력에 쓴다. */
   origin?: NavOrigin;
-  /** '현장 정보 추가' 바텀 시트 열기 */
-  onAddTip: (place: Place) => void;
+  /** '정보 오류 제보' 바텀 시트 열기 */
+  onReportIssue: (place: Place) => void;
 }) {
   const near = nearestParking(place, all);
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
@@ -518,7 +516,7 @@ function PlaceCard({
   const [editing, setEditing] = useState(false); // 한 줄 메모 입력·수정 영역
   const [draft, setDraft] = useState("");
   const info = fieldInfo(place);
-  const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime || !!info.tip;
+  const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime;
   const statusRow = !!open?.status || !!open?.reason;
 
   return (
@@ -657,14 +655,6 @@ function PlaceCard({
               )}
             </ul>
           )}
-          {info.tip && (
-            <blockquote className="theme-t rounded-r-xl border-l-4 border-primary bg-bg px-3 py-2 text-label text-ink">
-              “{info.tip.t}”
-              <span className="ml-1 text-caption font-medium text-muted">
-                · 현장 팁 {timeAgo(info.tip.at, nowMs)}
-              </span>
-            </blockquote>
-          )}
         </div>
       )}
 
@@ -702,11 +692,11 @@ function PlaceCard({
           다녀옴
         </button>
         <button
-          onClick={() => onAddTip(place)}
-          className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1 rounded-full border border-dashed border-primary px-3 text-caption font-semibold text-primary active:opacity-80"
+          onClick={() => onReportIssue(place)}
+          className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-muted active:opacity-80"
         >
-          <PencilLine size={14} aria-hidden />
-          {hasField ? "현장 정보 수정" : "현장 정보 추가"}
+          <TriangleAlert size={14} strokeWidth={2} aria-hidden />
+          정보 오류 제보
         </button>
         {place.mode === "nopo" && (
           <button
@@ -883,7 +873,7 @@ export default function Home() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
   const [refresh, setRefresh] = useState(0); // 조용한 새로고침(화면 유지)
-  const [tipTarget, setTipTarget] = useState<Place | null>(null); // '현장 정보 추가' 시트 대상
+  const [issueTarget, setIssueTarget] = useState<Place | null>(null); // '정보 오류 제보' 시트 대상
   const [patches, setPatches] = useState<Record<string, PlaceFeedback>>({}); // 내가/다른 기기가 방금 바꾼 feedback
   // 방금 접수·수신된 폐업/정보오류 제보 상태 (조회 결과 위에 덮어쓴다)
   const [issuePatches, setIssuePatches] = useState<
@@ -1419,7 +1409,7 @@ export default function Home() {
                 anchorName={anchor?.name}
                 nowMs={nowMs}
                 origin={origin}
-                onAddTip={setTipTarget}
+                onReportIssue={setIssueTarget}
               />
             )}
           </PlaceMap>
@@ -1482,7 +1472,7 @@ export default function Home() {
               anchorName={anchor?.name}
               nowMs={nowMs}
               origin={origin}
-              onAddTip={setTipTarget}
+              onReportIssue={setIssueTarget}
             />
           ))
         )}
@@ -1519,14 +1509,10 @@ export default function Home() {
 
       {coupleOpen && <CoupleSheet onClose={() => setCoupleOpen(false)} />}
 
-      {tipTarget && (
-        <FieldTipSheet
-          place={tipTarget}
-          onClose={() => setTipTarget(null)}
-          onSaved={(id, feedback) => {
-            setPatches((prev) => ({ ...prev, [id]: feedback }));
-            showToast("현장 정보를 등록했어요. 다른 기기에도 바로 공유돼요!");
-          }}
+      {issueTarget && (
+        <IssueReportSheet
+          place={issueTarget}
+          onClose={() => setIssueTarget(null)}
           onReported={(id, res) => setIssuePatches((prev) => ({ ...prev, [id]: res }))}
         />
       )}
