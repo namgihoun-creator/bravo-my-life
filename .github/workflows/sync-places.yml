@@ -35,6 +35,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write # 이상 감지 시 Issue 생성/코멘트
 
 jobs:
   sync:
@@ -89,3 +90,25 @@ jobs:
           flags=""
           if [ "${{ steps.plan.outputs.dry }}" = "true" ]; then flags="--dry-run"; fi
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-places.ts --mode=${{ steps.plan.outputs.mode }} $flags
+
+      # 실패(미검출 급증 가드 포함) 시에만 Issue. 정상 실행은 알림 없음. 열린 Issue 가 있으면 코멘트만 달아 알림이 쌓이지 않게 한다.
+      - name: 이상 알림 (GitHub Issue)
+        if: failure() && steps.plan.outputs.skip != 'true' && steps.plan.outputs.dry != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MODE: ${{ steps.plan.outputs.mode }}
+        run: |
+          if [ -f scripts/out/anomaly.md ]; then
+            body="$(cat scripts/out/anomaly.md)"
+          else
+            body="### sync-places ($MODE) 실행 실패"$'\n'"스크립트가 오류로 끝났습니다. 로그를 확인해 주세요."
+          fi
+          body="$body"$'\n\n'"실행 로그: $RUN_URL"
+          gh label create sync-anomaly --color B60205 --description "데이터 현행화 이상 감지" --force
+          num="$(gh issue list --label sync-anomaly --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$body"
+          else
+            gh issue create --label sync-anomaly --title "[sync-places] $MODE 이상 감지" --body "$body"
+          fi

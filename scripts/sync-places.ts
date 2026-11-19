@@ -15,6 +15,7 @@
  *
  * 환경변수: SUPABASE_URL(없으면 NEXT_PUBLIC_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY, KAKAO_REST_API_KEY
  */
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HUBS } from "../src/data/places.ts";
 
@@ -344,6 +345,21 @@ async function syncSurvival(sb: SupabaseClient, dryRun: boolean, hubNames: strin
 
 /* ───────────── nopo-check ───────────── */
 
+/**
+ * 미검출 비율 가드. 정상 상태의 미검출은 0.1% 안팎(2026-11 dry-run: 1,572곳 중 1곳)이라 3%면 충분히 이상 신호다.
+ * 초과하면 카카오 장애·검색 변경 등으로 오탐이 쏟아진 것으로 보고 DB 에 아무것도 쓰지 않고 실패(exit 1)한다.
+ * 워크플로가 scripts/out/anomaly.md 를 읽어 GitHub Issue 를 만든다(열린 Issue 가 있으면 코멘트만).
+ * NOPO_MISSING_MAX_PCT 로 조정, 표본이 너무 작으면(--limit 등) 판정하지 않는다.
+ */
+const MISSING_MAX_PCT = Number(process.env.NOPO_MISSING_MAX_PCT ?? 3);
+const GUARD_MIN_ROWS = 50;
+const ANOMALY_FILE = "scripts/out/anomaly.md";
+
+function writeStepSummary(md: string) {
+  const f = process.env.GITHUB_STEP_SUMMARY; // Actions 실행 요약 탭 (로컬에서는 없음)
+  if (f) appendFileSync(f, md + "\n");
+}
+
 async function checkNopo(sb: SupabaseClient, dryRun: boolean, limit: number | null, migrated: boolean) {
   const nopoCols: string = migrated
     ? "id,kakao_id,source_key,category,name,address,summary,lat,lng,source,open_year,reported_issue,closure_reports"
@@ -387,6 +403,35 @@ async function checkNopo(sb: SupabaseClient, dryRun: boolean, limit: number | nu
   console.log(`미검출 ${missing.length}곳 → 신규 폐업 의심 플래그 ${newFlags.length}곳 (이미 제보·플래그된 ${alreadyFlagged}곳은 그대로)`);
   console.log(`이전 의심 플래그 해제 ${cleared.length}곳`);
   for (const r of newFlags.slice(0, 5)) console.log("  의심 예)", r.name, r.address ?? "");
+
+  const pct = rows.length ? (missing.length / rows.length) * 100 : 0;
+  const mode = dryRun ? "dry-run" : "쓰기";
+  const head = `미검출 ${missing.length}/${rows.length}곳 (${pct.toFixed(2)}%), 임계 ${MISSING_MAX_PCT}%`;
+  if (rows.length >= GUARD_MIN_ROWS && pct > MISSING_MAX_PCT) {
+    const examples = missing.slice(0, 10).map((r) => `- ${r.name} (${r.address ?? "주소 없음"})`).join("\n");
+    const body = [
+      `### nopo-check 이상 감지 (${mode})`,
+      `${head} → **DB 에 아무것도 쓰지 않고 중단했습니다.**`,
+      "",
+      "카카오 API 장애·응답 변경·키 문제로 검색이 비었을 가능성이 큽니다. 원인을 확인한 뒤 수동 실행(`workflow_dispatch`)으로 다시 돌려 주세요.",
+      "",
+      "미검출 예시(최대 10곳):",
+      examples,
+    ].join("\n");
+    mkdirSync("scripts/out", { recursive: true });
+    writeFileSync(ANOMALY_FILE, body + "\n");
+    writeStepSummary(body);
+    console.error(`
+⚠ ${head} — 임계 초과: 쓰기 중단 (${ANOMALY_FILE} 기록)`);
+    process.exit(1);
+  }
+  writeStepSummary(
+    [
+      `### nopo-check 결과 (${mode})`,
+      `- 확인 ${found.length}곳 / ${head}`,
+      `- 신규 폐업 의심 ${newFlags.length}곳, 의심 해제 ${cleared.length}곳`,
+    ].join("\n"),
+  );
 
   if (dryRun) {
     console.log("\n--dry-run: DB 에 쓰지 않았습니다.");

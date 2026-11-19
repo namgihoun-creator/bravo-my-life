@@ -58,6 +58,7 @@ import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import ReportSheet from "./ReportSheet";
 import IssueReportSheet from "./IssueReportSheet";
+import { rememberMode, resolveStartMode } from "@/lib/startMode";
 import PlaceMap from "./PlaceMap";
 import NavigationButton from "./NavigationButton";
 import type { NavOrigin } from "@/lib/navigation";
@@ -849,8 +850,15 @@ function agoText(diffMs: number): string {
 
 /* ───────────────────────── 메인 ───────────────────────── */
 
+const noopSubscribe = () => () => {};
+const serverStartMode = (): Mode => "survival";
+
 export default function Home() {
-  const [mode, setMode] = useState<Mode>("survival");
+  // 첫 화면 모드: 마지막으로 고른 탭 기억 + 새 세션 심야(23~05시)만 생존 모드(src/lib/startMode.ts).
+  // 서버 렌더·하이드레이션은 survival, 마운트 후 저장된 시작 모드로 맞춘다. 사용자가 탭을 누르면 그 값이 우선한다.
+  const startMode = useSyncExternalStore(noopSubscribe, resolveStartMode, serverStartMode);
+  const [pickedMode, setMode] = useState<Mode | null>(null);
+  const mode: Mode = pickedMode ?? startMode;
   const [filter, setFilter] = useState("all");
   const [loc, setLoc] = useState<Loc>({ kind: "pending" });
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1006,6 +1014,7 @@ export default function Home() {
   };
 
   const changeMode = (m: Mode) => {
+    rememberMode(m); // 사용자가 직접 고른 탭만 기억한다(심야 자동 전환·주차 연결은 저장 안 함)
     setAnchor(null);
     setMode(m);
     setFilter("all");
