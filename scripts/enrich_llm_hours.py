@@ -174,6 +174,9 @@ def selftest() -> None:
     assert validate({"hours": "11:00~21:30", "break_time": "15:00~16:30", "reason": q4}, [q4]) == {"hours": "11:00~21:30", "break_time": None, "closed_days": None}  # 영등포복집: break 환각
     q5 = "영업시간 매일: 오전 11시30분 ~ 오후 10시"
     assert validate({"hours": "11:30~22:00", "reason": q5}, [q5]) is not None  # 12시간제 표기 허용
+    assert _is_daily_quota(Exception("Quota exceeded ... GenerateRequestsPerDayPerProjectPerModel-FreeTier"))
+    assert not _is_daily_quota(Exception("GenerateRequestsPerMinutePerProjectPerModel-FreeTier"))
+    assert _is_429(Exception("429 You exceeded your current quota"))
     print("selftest OK")
 
 
@@ -196,9 +199,25 @@ _last_call = [0.0]
 MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "4.5"))  # 무료 티어 분당 15회 → 4.5초 간격
 
 
+class QuotaExhausted(Exception):
+    """일일 한도 소진 또는 분당 한도 재시도 실패 → 즉시 중단(Fail-fast)."""
+
+
+RPM_RETRIES = 3
+
+
+def _is_429(e: Exception) -> bool:
+    return "ResourceExhausted" in type(e).__name__ or "429" in str(e)[:30]
+
+
+def _is_daily_quota(e: Exception) -> bool:
+    t = str(e)
+    return "PerDay" in t or "per day" in t.lower()
+
+
 def _throttled_generate(model, payload: str):
-    """무료 티어 RPM 제한 대응: 호출 간격을 직렬화하고 429(ResourceExhausted)는 대기 후 재시도."""
-    for attempt in range(4):
+    """무료 티어 RPM 제한 대응: 호출 간격을 직렬화한다. 429 가 일일 한도면 즉시, 분당 한도면 RPM_RETRIES 회 재시도 후에도 실패하면 QuotaExhausted."""
+    for attempt in range(RPM_RETRIES + 1):
         with _gate:
             wait = MIN_GAP - (time.monotonic() - _last_call[0])
             if wait > 0:
@@ -207,11 +226,12 @@ def _throttled_generate(model, payload: str):
         try:
             return model.generate_content(payload)
         except Exception as e:  # noqa: BLE001
-            if "ResourceExhausted" in type(e).__name__ or "429" in str(e)[:20]:
-                time.sleep(20 * (attempt + 1))
-                continue
-            raise
-    return None
+            if not _is_429(e):
+                raise
+            if _is_daily_quota(e) or attempt == RPM_RETRIES:
+                raise QuotaExhausted(str(e)[:300]) from e
+            time.sleep(20 * (attempt + 1))
+    raise QuotaExhausted("retries exhausted")
 
 
 def ask_llm(model, row: dict, snippets: list[str]) -> dict | None:
@@ -283,32 +303,60 @@ def main() -> None:
         todo = todo[: args.limit]
     print(f"검증 노포 {len(rows)}곳 중 처리 대상 {len(todo)}곳 ({'APPLY' if args.apply else 'dry-run'}, model={MODEL})")
 
+    stop = threading.Event()
+    stop_msg: list[str] = []
+    write_lock = threading.Lock()
+    saved = [0]
+
     def work(row: dict) -> dict:
-        sn, q = snippets_for(row)
-        time.sleep(0.15)
-        if not sn:
-            return {"id": row["id"], "name": row["name"], "status": "no-snippet"}
-        raw = ask_llm(llm, row, sn)
+        base = {"id": row["id"], "name": row["name"]}
+        if stop.is_set():
+            return {**base, "status": "skipped"}
+        try:
+            sn, q = snippets_for(row)
+            time.sleep(0.15)
+            if not sn:
+                return {**base, "status": "no-snippet"}
+            raw = ask_llm(llm, row, sn)
+        except QuotaExhausted as e:
+            stop.set()
+            stop_msg.append(str(e))
+            return {**base, "status": "skipped"}
+        except Exception as e:  # noqa: BLE001  (한 곳의 실패가 전체를 멈추지 않게)
+            return {**base, "status": "error", "error": str(e)[:120]}
         val = validate(raw, sn)
         quote = (raw or {}).get("reason") if isinstance(raw, dict) else None
-        return {"id": row["id"], "name": row["name"], "status": "ok" if val else "null", "llm_hours": val,
-                "reason": (quote or "")[:80] or None, "extra": row.get("extra") or []}
+        res = {**base, "status": "ok" if val else "null", "llm_hours": val, "reason": (quote or "")[:80] or None}
+        if val and args.apply:  # 건별 즉시 저장: 중간에 멈춰도 여기까지는 안전
+            new_extra = [e for e in (row.get("extra") or []) if not e.startswith(PREFIX)] + [to_extra_item(val)]
+            try:
+                with write_lock:
+                    sb.table("bml_places").update({"extra": new_extra}).eq("id", row["id"]).execute()
+                    saved[0] += 1
+                res["saved"] = True
+            except Exception as e:  # noqa: BLE001
+                res["status"] = "error"
+                res["error"] = "DB 저장 실패: " + str(e)[:100]
+        return res
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         results = list(ex.map(work, todo))
 
     ok = [r for r in results if r["status"] == "ok"]
-    print(f"추출 성공 {len(ok)}/{len(results)} ({100 * len(ok) / max(1, len(results)):.0f}%), 스니펫 없음 {sum(r['status'] == 'no-snippet' for r in results)}곳")
+    done = [r for r in results if r["status"] != "skipped"]
+    print(f"추출 성공 {len(ok)}/{len(done)} ({100 * len(ok) / max(1, len(done)):.0f}%), 스니펫 없음 {sum(r['status'] == 'no-snippet' for r in results)}곳, 오류 {sum(r['status'] == 'error' for r in results)}곳")
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps([{k: v for k, v in r.items() if k != "extra"} for r in results], ensure_ascii=False, indent=1), encoding="utf-8")
+    OUT.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"리포트: {OUT}")
-    if not args.apply:
+    if args.apply:
+        print(f"extra 갱신 {saved[0]}곳 저장 완료(건별 즉시 저장)")
+    else:
         print("--apply 가 없어 DB에 쓰지 않았습니다.")
-        return
-    for r in ok:
-        new_extra = [e for e in r["extra"] if not e.startswith(PREFIX)] + [to_extra_item(r["llm_hours"])]
-        sb.table("bml_places").update({"extra": new_extra}).eq("id", r["id"]).execute()
-    print(f"extra 갱신 {len(ok)}곳 완료")
+    if stop.is_set():
+        skipped = sum(r["status"] == "skipped" for r in results)
+        print(f"⚠ Gemini 한도 도달로 중단: 미처리 {skipped}곳. 한도가 풀린 뒤(보통 다음 날) 같은 명령을 다시 실행하면 이어서 처리합니다.")
+        print("  사유: " + (stop_msg[0][:160] if stop_msg else ""))
+        sys.exit(2)
 
 
 if __name__ == "__main__":
