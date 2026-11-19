@@ -24,6 +24,7 @@ import {
   FALLBACK_LOCATION,
   FEEDBACK_CHIPS,
   FILTERS,
+  HUBS,
   ageTier,
   distanceM,
   feeEntries,
@@ -68,6 +69,11 @@ import type { NavOrigin } from "@/lib/navigation";
 import { showToast } from "@/lib/toast";
 
 const RADIUS_M = 2000;
+/** 기본 반경 안 결과가 이 수 미만이면 반경을 한 번만 EXPANDED_RADIUS_M 로 넓혀 다시 조회한다(모드별). */
+const MIN_RESULTS = 5;
+const EXPANDED_RADIUS_M = 5000;
+/** 인접 거점 안내 배너: 이미 거점에서 이 거리 안이면(=지역 자체가 한산) 보여 주지 않는다 */
+const HUB_BANNER_MIN_M = 1500;
 const EMPTY: Place[] = []; // 로딩 중 반환값을 안정된 참조로 유지 (지도 재그리기 방지)
 
 type View = "list" | "map";
@@ -114,7 +120,9 @@ function LocationBadge({ loc, onClick }: { loc: Loc; onClick: () => void }) {
 /* ───────────────────────── 데이터 ───────────────────────── */
 
 /** staleAt: 네트워크 실패/오프라인으로 캐시를 대신 보여주는 경우 그 캐시의 저장 시각(ms) */
-type Fetched = { key: string; places: Place[]; error: boolean; staleAt: number | null };
+type Expanded = Record<Mode, boolean>;
+const NOT_EXPANDED: Expanded = { survival: false, nopo: false };
+type Fetched = { key: string; places: Place[]; error: boolean; staleAt: number | null; expanded: Expanded };
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -200,8 +208,8 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
       const cached = readNearby(lat, lng);
       setResult(
         cached
-          ? { key, places: cached.places, error: false, staleAt: cached.t }
-          : { key, places: [], error: true, staleAt: null },
+          ? { key, places: cached.places, error: false, staleAt: cached.t, expanded: NOT_EXPANDED }
+          : { key, places: [], error: true, staleAt: null, expanded: NOT_EXPANDED },
       );
     };
 
@@ -213,14 +221,24 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
     const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     // 모드별로 따로 조회해 한쪽(예: 노포 수백 곳)이 limit을 먼저 채워 다른 쪽이 잘리지 않게 한다
     const supabase = getSupabase();
-    const fetchMode = (m: Mode) =>
+    const fetchMode = (m: Mode, radius: number) =>
       supabase
-        .rpc("bml_get_nearby_places", { p_lat: lat, p_lng: lng, p_radius_m: RADIUS_M, p_mode: m, p_limit: 400 })
+        .rpc("bml_get_nearby_places", { p_lat: lat, p_lng: lng, p_radius_m: radius, p_mode: m, p_limit: 400 })
         .abortSignal(ctrl.signal);
-    Promise.all([fetchMode("survival"), fetchMode("nopo")])
-      .then(([sv, np]) => {
+    // 노포는 화면에 보이는 곳(업력 10년+ 검증·이웃 제보)만 센다. 모드별로 기본 반경 결과가 적으면 딱 한 번 5km 로 넓힌다.
+    const countOf = (m: Mode, rows: Place[]) => (m === "nopo" ? rows.filter(isVisiblePlace).length : rows.length);
+    const fetchWithExpand = async (m: Mode) => {
+      const base = await fetchMode(m, RADIUS_M);
+      if (base.error || countOf(m, (base.data ?? []) as Place[]) >= MIN_RESULTS) return { res: base, expanded: false };
+      const wide = await fetchMode(m, EXPANDED_RADIUS_M); // 1회만 — 여기서 다시 넓히지 않는다
+      return wide.error ? { res: base, expanded: false } : { res: wide, expanded: true };
+    };
+    Promise.all([fetchWithExpand("survival"), fetchWithExpand("nopo")])
+      .then(([svr, npr]) => {
         window.clearTimeout(timer);
         if (cancelled) return;
+        const sv = svr.res;
+        const np = npr.res;
         const error = sv.error ?? np.error;
         if (error) {
           console.error("bml_get_nearby_places", error);
@@ -229,7 +247,7 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
         const places = [...((sv.data ?? []) as Place[]), ...((np.data ?? []) as Place[])];
         saveNearby(lat, lng, places);
         loadedKey.current = key;
-        setResult({ key, places, error: false, staleAt: null });
+        setResult({ key, places, error: false, staleAt: null, expanded: { survival: svr.expanded, nopo: npr.expanded } });
       })
       .then(undefined, (e) => {
         window.clearTimeout(timer);
@@ -249,6 +267,7 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
     error: ready && result.error,
     places: ready ? result.places : EMPTY,
     staleAt: ready ? result.staleAt : null,
+    expanded: ready ? result.expanded : NOT_EXPANDED,
   };
 }
 
@@ -923,6 +942,7 @@ export default function Home() {
   const error = anchor ? anchorData.error : nearby.error;
   const fetched = anchor ? anchorData.places : nearby.places;
   const staleAt = anchor ? null : nearby.staleAt;
+  const radiusExpanded = !anchor && nearby.expanded[mode];
   // 조회 결과 위에 최신 현장 정보(내 등록 + 실시간 수신)를 덮어쓴다
   const all = useMemo(
     () =>
@@ -1253,6 +1273,19 @@ export default function Home() {
       ? null
       : { lat: loc.lat, lng: loc.lng, name: loc.kind === "gps" ? "현재 위치" : loc.name };
 
+  // 결과가 적을 때(반경 5km 확장 뒤에도 현재 모드의 노출 장소 5곳 미만): 가장 가까운 거점으로 바로 이동하는 안내.
+  // 필터·검색은 세지 않는다(칩을 좁혀 적게 나오는 경우와 구분). 이미 거점 1.5km 안이면 지역 자체가 한산한 것이라 숨긴다.
+  const modeCount = all.filter((p) => p.mode === mode && isVisiblePlace(p)).length;
+  const nearestHub =
+    anchor || loc.kind === "pending"
+      ? null
+      : HUBS.reduce<{ hub: (typeof HUBS)[number]; m: number } | null>((best, h) => {
+          const m = distanceM(loc.lat, loc.lng, h.lat, h.lng);
+          return !best || m < best.m ? { hub: h, m } : best;
+        }, null);
+  const fewResults = !loading && !error && !anchor && staleAt === null && modeCount < MIN_RESULTS;
+  const hubBanner = fewResults && nearestHub && nearestHub.m >= HUB_BANNER_MIN_M ? nearestHub.hub : null;
+
   return (
     <>
     <div className="mx-auto min-h-dvh w-full max-w-md overflow-x-clip md:max-w-2xl">
@@ -1411,6 +1444,23 @@ export default function Home() {
         className="space-y-3 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4"
         aria-busy={loading}
       >
+        {hubBanner && (
+          <button
+            type="button"
+            onClick={() => pickLocation({ name: `${hubBanner.name} 인근`, lat: hubBanner.lat, lng: hubBanner.lng })}
+            className="theme-t flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-tag-bg px-3 py-2 text-center text-label font-semibold text-primary active:opacity-80"
+          >
+            <MapPin size={16} className="shrink-0" aria-hidden />
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              근처에 등록된 장소가 적어요 · {hubBanner.name} 인근으로 보기
+            </span>
+          </button>
+        )}
+        {!hubBanner && radiusExpanded && !loading && !error && staleAt === null && (
+          <p className="text-center text-caption text-muted" role="note">
+            주변 2km 안에 장소가 적어 5km까지 넓혀 보여드려요
+          </p>
+        )}
         {loading && activeFilter !== "fav" && activeFilter !== "visited" ? (
           view === "map" ? (
             <div className="h-[calc(100dvh-250px)] min-h-[380px] animate-pulse rounded-2xl bg-tag-bg" aria-hidden />
@@ -1478,7 +1528,7 @@ export default function Home() {
                 ? EMPTY_MESSAGE[activeFilter]
                 : openActive
                 ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
-                : "반경 2km 안에 조건에 맞는 장소가 아직 없어요."}
+                : `반경 ${!anchor && nearby.expanded[mode] ? 5 : 2}km 안에 조건에 맞는 장소가 아직 없어요.`}
             </p>
             {openActive && (
               <button
