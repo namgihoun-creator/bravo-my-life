@@ -24,7 +24,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** 노포 카드 주소 줄: 우측 복사 아이콘이 탭하면 주소를 복사하고 체크로 바뀐다(1.6초). 긴 주소는 2줄까지, 아이콘은 첫 줄에 맞춘다. */
+/** 노포 카드 주소 줄: 복사 아이콘이 주소 마지막 글자 바로 뒤에 붙어 한 덩어리로 읽힌다(줄바꿈돼도 마지막 줄 끝). 탭하면 복사되고 아이콘이 체크로 바뀐다(1.6초). 주소는 전부 보여 준다(최대 27자라 2줄 이내). */
 export default function AddressLine({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -49,14 +49,15 @@ export default function AddressLine({ address }: { address: string }) {
       aria-label={`주소 복사: ${address}`}
       className="-my-2 mt-0.5 flex min-h-[44px] w-full min-w-0 items-start gap-1.5 py-[13px] text-left text-label text-muted"
     >
-      {/* 아이콘은 첫 줄(line-height 1.4 ≈ 18px) 가운데에 맞춘다 */}
       <MapPin size={14} strokeWidth={2} className="mt-[2px] shrink-0" aria-hidden />
-      <span className="line-clamp-2 min-w-0 flex-1 leading-[1.4] [overflow-wrap:anywhere]">{address}</span>
-      {copied ? (
-        <Check size={14} strokeWidth={2.5} className="mt-[2px] shrink-0 text-success" aria-hidden />
-      ) : (
-        <Copy size={14} strokeWidth={2} className="mt-[2px] shrink-0" aria-hidden />
-      )}
+      <span className="min-w-0 flex-1 leading-[1.4] [overflow-wrap:anywhere]">
+        {address}
+        {copied ? (
+          <Check size={14} strokeWidth={2.5} className="ml-1 inline-block align-[-2px] text-success" aria-hidden />
+        ) : (
+          <Copy size={14} strokeWidth={2} className="ml-1 inline-block align-[-2px]" aria-hidden />
+        )}
+      </span>
       <span role="status" className="sr-only">
         {copied ? "주소가 복사됐어요" : ""}
       </span>

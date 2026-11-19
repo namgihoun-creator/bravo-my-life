@@ -530,7 +530,22 @@ function PlaceCard({
       } ${highlighted ? "ring-2 ring-primary" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 className="min-w-0 text-title2 font-bold tracking-[-0.02em] text-ink [overflow-wrap:anywhere]">{place.name}</h2>
+        <h2 className="min-w-0 text-title2 font-bold tracking-[-0.02em] text-ink [overflow-wrap:anywhere]">
+          {place.mode === "nopo" ? (
+            // 상세 페이지가 있는 노포만 링크. 줄 높이가 작아 -my-2.5/py-2.5 로 터치 영역만 44px 이상으로 넓힌다(카드 높이 불변).
+            <Link
+              href={`/place/${place.id}`}
+              prefetch={false}
+              aria-label={`${place.name} 상세 보기`}
+              className="-my-2.5 inline-block py-2.5 active:opacity-70"
+            >
+              {place.name}
+              <ChevronRight size={16} strokeWidth={2} className="ml-0.5 inline-block align-[-2px] text-muted" aria-hidden />
+            </Link>
+          ) : (
+            place.name
+          )}
+        </h2>
         {place.badge && (
           <span
             className={`theme-t inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-caption font-bold ${
@@ -826,26 +841,10 @@ function PlaceCard({
           인근 공영주차장 보기 · 도보 {near.walkMin}분
         </button>
       )}
-      {(place.mode === "nopo" || syncedLabel(place)) && (
-        <div className="mt-1 flex items-center justify-between gap-2">
-          {place.mode === "nopo" ? (
-            <Link
-              href={`/place/${place.id}`}
-              prefetch={false}
-              className="inline-flex min-h-[44px] items-center gap-0.5 text-label font-semibold text-primary active:opacity-70"
-            >
-              상세보기
-              <ChevronRight size={14} aria-hidden />
-            </Link>
-          ) : (
-            <span />
-          )}
-          {syncedLabel(place) && (
-            <p className="tnum text-caption text-muted" title="데이터를 마지막으로 확인한 달">
-              {syncedLabel(place)}
-            </p>
-          )}
-        </div>
+      {syncedLabel(place) && (
+        <p className="tnum mt-2 text-right text-caption text-muted" title="데이터를 마지막으로 확인한 달">
+          {syncedLabel(place)}
+        </p>
       )}
     </article>
   );
