@@ -1,5 +1,5 @@
 """
-노포 영업시간 보완(LLM): 카카오 블로그 스니펫 → Claude Haiku → bml_places.extra 의 'llm_hours:{JSON}' 한 줄.
+노포 영업시간 보완(LLM): 카카오 블로그 스니펫 → Google Gemini → bml_places.extra 의 'llm_hours:{JSON}' 한 줄.
 
 - 대상: 화면에 노출되는 검증 노포(mode='nopo', is_active, open_year 있음) 중 공식 영업시간이 없는 곳.
 - 저장: `extra`는 DB에서 text[] 이므로 객체를 못 담는다 → 'llm_hours:{"hours":"11:00~21:00","break_time":null,"closed_days":["월"]}'
@@ -9,7 +9,7 @@
 - 블로그 원문은 저장하지 않는다(저작권). 리포트에는 근거 인용(80자 이내)만 남긴다.
 
 사용법:
-    pip install anthropic            # + ANTHROPIC_API_KEY 환경변수 (또는 `ant auth login`)
+    pip install google-generativeai  # + .env.local 의 GEMINI_API_KEY
     python scripts/enrich_llm_hours.py --limit 50                  # dry-run, 리포트: scripts/out/llm_hours_report.json
     python scripts/enrich_llm_hours.py --limit 50 --apply          # extra 갱신
     python scripts/enrich_llm_hours.py --selftest                  # 검증 로직 자체 테스트(API·DB 불필요)
@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -28,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import enrich_nopo as en  # noqa: E402  (blog_search / nearest_hub / strip_tags / brand_of / 환경변수 재사용)
 
-MODEL = "claude-haiku-5-5"
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")  # 1.5/2.5-flash 는 신규 키에서 404
 PREFIX = "llm_hours:"
 DAYS = ["월", "화", "수", "목", "금", "토", "일"]
 OUT = Path(__file__).resolve().parent / "out" / "llm_hours_report.json"
@@ -46,7 +48,9 @@ RULES
 3) Regular closing: only plain weekly weekdays. Complex conditions (first Sunday of the month, alternate weeks, holidays only) -> closed_days null. Never output anything but a weekday array.
 4) NEVER put the words 연중무휴, 24시, 24시간, 까지, 부터, 오전, 오후 or any prose inside the JSON values. Convert "오후 3시" to "15:00". If you cannot convert exactly, use null.
 5) Extract only what the snippets EXPLICITLY state for THIS shop (not another branch, not a relocated address). No guessing, no typical-hours assumptions. If evidence is weak, ambiguous or conflicting, return null for the affected field; if unsure about everything return all nulls.
-6) "reason" must be copied verbatim from one snippet and support the non-null value(s); null when everything is null."""
+6) CONDITIONAL / DIFFERENTIATED HOURS: if opening hours differ by weekday, or a specific day opens late/closes early (e.g. "수요일은 22:00까지", "일~목 15:00~03:00 금~토 15:00~04:00", weekday vs weekend), or any other exception applies, return null for ALL fields.
+7) BREAK TIME: if break_time applies only under a condition (e.g. "평일에만", weekdays only, not every day), return break_time null. break_time must appear in the quoted reason.
+8) "reason" must be copied verbatim from one snippet and support the non-null value(s); null when everything is null."""
 
 
 # ───────────────────────── 검증(순수 함수) ─────────────────────────
@@ -75,6 +79,30 @@ def valid_range(v) -> str | None:
     return None if dur >= 23.5 * 60 else v
 
 
+# 조건부·요일별 차등을 암시하는 표현(공백·'-' 정규화 후 비교). 근거 문장에 있으면 값을 신뢰하지 않는다.
+COND_WORDS = ("평일", "주말", "요일은", "에만", "마다", "금~토", "일~목")
+DAY_RANGE_RE = re.compile(r"[월화수목금토일]~[월화수목금토일]")
+
+
+def _cnorm(s: str) -> str:
+    return re.sub(r"[-–—]", "~", _norm(s))
+
+
+def is_conditional(quote: str) -> bool:
+    q = _cnorm(quote)
+    return any(w in q for w in COND_WORDS) or len(DAY_RANGE_RE.findall(q)) >= 2
+
+
+def hours_in_quote(rng: str, quote: str) -> bool:
+    """HH:MM~HH:MM 의 시(時) 숫자가 근거 문장에 실제로 있는지(오후 표기 12시간제·24시 허용)."""
+    nums = {int(x) for x in re.findall(r"\d+", quote)}
+    for h in (int(rng[0:2]), int(rng[6:8])):
+        cands = {h, h % 12, h - 12 if h > 12 else h, 24 if h == 0 else h, 0 if h == 24 else h}
+        if not (cands & nums):
+            return False
+    return True
+
+
 def validate(obj, snippets: list[str]) -> dict | None:
     """LLM 출력 → 저장할 dict(hours/break_time/closed_days) 또는 None. 근거 인용이 스니펫에 없으면 통째로 버린다."""
     if not isinstance(obj, dict):
@@ -95,6 +123,14 @@ def validate(obj, snippets: list[str]) -> dict | None:
     quote = _norm(reason.strip(" …."))
     if len(quote) < 4 or not any(quote in _norm(t) for t in snippets):
         return None  # 환각 방지: 원문에 없는 근거
+    if is_conditional(reason):
+        return None  # 요일별 차등·예외 조건 → 전체 버림
+    if hours and not hours_in_quote(hours, reason):
+        hours = None  # 값이 근거에 없음(환각)
+    if brk and not hours_in_quote(brk, reason):
+        brk = None
+    if not hours and not brk and not days:
+        return None
     return {"hours": hours, "break_time": brk, "closed_days": days}
 
 
@@ -113,8 +149,8 @@ def has_official_hours(row: dict) -> bool:
 
 
 def selftest() -> None:
-    sn = ["영업시간 : 월~토 11:00 - 21:00 | 브레이크타임 15:00~16:00 일요일 휴무"]
-    ok = validate({"hours": "11:00~21:00", "break_time": "15:00~16:00", "closed_days": ["일"], "reason": "브레이크타임 15:00~16:00 일요일 휴무"}, sn)
+    sn = ["영업시간 : 11:00 - 21:00 | 브레이크타임 15:00~16:00 일요일 휴무"]
+    ok = validate({"hours": "11:00~21:00", "break_time": "15:00~16:00", "closed_days": ["일"], "reason": "영업시간 : 11:00 - 21:00 | 브레이크타임 15:00~16:00 일요일 휴무"}, sn)
     assert ok == {"hours": "11:00~21:00", "break_time": "15:00~16:00", "closed_days": ["일"]}, ok
     assert validate({"hours": "11:00~21:00", "closed_days": None, "reason": "존재하지 않는 문장입니다"}, sn) is None  # 환각 근거
     assert validate({"hours": "오후 3시~9시", "closed_days": None, "reason": "영업시간"}, sn) is None  # 형식 위반
@@ -128,6 +164,16 @@ def selftest() -> None:
     assert to_extra_item({"hours": "11:00~21:00", "break_time": None, "closed_days": ["월"]}) == 'llm_hours:{"hours":"11:00~21:00","break_time":null,"closed_days":["월"]}'
     assert has_official_hours({"summary": "2011년 개업 · 한식 전문점이에요.", "extra": ["food:한식"]}) is False
     assert has_official_hours({"summary": "평일 09:00~18:00", "extra": []}) is True
+    q1 = "매일 09:00~03:00(수요일은 22:00 까지)"
+    assert validate({"hours": "09:00~03:00", "reason": q1}, [q1]) is None  # 초동집: 요일은
+    q2 = "일 ~ 목 15:00 ~ 03:00 (라스트오더 02:30) 금 ~ 토 15:00 ~ 04:00"
+    assert validate({"hours": "15:00~03:00", "reason": q2}, [q2]) is None  # 마포한입갈비: 일~목/금~토
+    q3 = "매일 11:00 ~ 22:00 평일에만 15:00 ~ 17:00 브레이크타임"
+    assert validate({"hours": "11:00~22:00", "break_time": "15:00~17:00", "reason": q3}, [q3]) is None  # 양바위: 평일/에만
+    q4 = "월~일 11:00 - 21:30"
+    assert validate({"hours": "11:00~21:30", "break_time": "15:00~16:30", "reason": q4}, [q4]) == {"hours": "11:00~21:30", "break_time": None, "closed_days": None}  # 영등포복집: break 환각
+    q5 = "영업시간 매일: 오전 11시30분 ~ 오후 10시"
+    assert validate({"hours": "11:30~22:00", "reason": q5}, [q5]) is not None  # 12시간제 표기 허용
     print("selftest OK")
 
 
@@ -145,18 +191,39 @@ def snippets_for(row: dict) -> tuple[list[str], str]:
     return out, f"{hub} {row['name']}"
 
 
-def ask_llm(client, row: dict, snippets: list[str]) -> dict | None:
+_gate = threading.Lock()
+_last_call = [0.0]
+MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "4.5"))  # 무료 티어 분당 15회 → 4.5초 간격
+
+
+def _throttled_generate(model, payload: str):
+    """무료 티어 RPM 제한 대응: 호출 간격을 직렬화하고 429(ResourceExhausted)는 대기 후 재시도."""
+    for attempt in range(4):
+        with _gate:
+            wait = MIN_GAP - (time.monotonic() - _last_call[0])
+            if wait > 0:
+                time.sleep(wait)
+            _last_call[0] = time.monotonic()
+        try:
+            return model.generate_content(payload)
+        except Exception as e:  # noqa: BLE001
+            if "ResourceExhausted" in type(e).__name__ or "429" in str(e)[:20]:
+                time.sleep(20 * (attempt + 1))
+                continue
+            raise
+    return None
+
+
+def ask_llm(model, row: dict, snippets: list[str]) -> dict | None:
     payload = json.dumps({"name": row["name"], "address": row.get("address"), "snippets": snippets}, ensure_ascii=False)
-    # Haiku 5.5: temperature/top_p 등 샘플링 값은 400, prefill 불가. 추출 작업이라 effort 는 low.
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=1000,
-        system=SYSTEM,
-        output_config={"effort": "low"},
-        messages=[{"role": "user", "content": payload}],
-    )
-    text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-    m = re.search(r"\{.*\}", text, re.S)
+    resp = _throttled_generate(model, payload)  # system_instruction + JSON mime 은 모델 생성 시 지정
+    if resp is None:
+        return None
+    try:
+        text = resp.text
+    except Exception:  # noqa: BLE001  (안전 필터 차단 등 → 빈 응답)
+        return None
+    m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
         return None
     try:
@@ -179,11 +246,21 @@ def main() -> None:
     if not (en.SUPABASE_URL and en.SERVICE_KEY and en.KAKAO_KEY):
         sys.exit("환경변수 필요: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, KAKAO_REST_API_KEY (.env.local)")
     try:
-        import anthropic
+        import os
 
-        llm = anthropic.Anthropic()  # ANTHROPIC_API_KEY 또는 `ant auth login` 프로필
+        import google.generativeai as genai
+
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError("GEMINI_API_KEY 없음(.env.local)")
+        genai.configure(api_key=key)
+        llm = genai.GenerativeModel(
+            MODEL,
+            system_instruction=SYSTEM,
+            generation_config={"response_mime_type": "application/json"},
+        )
     except Exception as e:  # noqa: BLE001
-        sys.exit(f"anthropic SDK/인증 준비 실패: {e}\n  pip install anthropic 후 ANTHROPIC_API_KEY 를 설정하세요.")
+        sys.exit(f"Gemini SDK/인증 준비 실패: {e}\n  pip install google-generativeai 후 .env.local 에 GEMINI_API_KEY 를 설정하세요.")
     from supabase import create_client
 
     sb = create_client(en.SUPABASE_URL, en.SERVICE_KEY)
