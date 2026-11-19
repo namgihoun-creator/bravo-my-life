@@ -2,34 +2,42 @@ import Link from "next/link";
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
 
+const linkCls =
+  "-my-3.5 inline-flex items-center py-3.5 text-caption font-semibold text-ink whitespace-nowrap active:opacity-70"; // 글자 16px + 위아래 14px = 터치 44px, 음수 마진으로 줄 높이는 그대로
+
+const Dot = () => (
+  <span aria-hidden className="hidden text-muted md:inline">
+    ·
+  </span>
+);
+
 /**
- * 공통 푸터 (Home·상세·법적 고지 페이지).
- * 모바일 3행: ① 브랜드+설명 ② 개인정보 처리방침·이용약관(각 44px) ③ Created by·©·버전
- * 768px 이상: 좌(브랜드) / 우(링크 + 메타) 2열. 훅이 없어 서버·클라이언트 양쪽에서 쓸 수 있다.
+ * 공통 푸터 (Home·상세·법적 고지 페이지). 본문 컨테이너(max-w-md/2xl) 밖에 두어 자체 폭(max-w-5xl)을 가진다.
+ * - 768px 이상: 좌(브랜드+설명) / 우(Created by · 링크 · ©·버전)가 한 줄(flex-row justify-between items-center)
+ * - 모바일: 좌 블록 / 우 블록이 위아래로 쌓이고 각 블록은 항목 단위로만 줄바꿈(가로 넘침 없음)
+ * 훅이 없어 서버·클라이언트 양쪽에서 쓸 수 있다.
  */
 export default function Footer() {
   return (
-    <footer className="mt-8 border-t border-line px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-4 md:flex md:items-start md:justify-between md:gap-6">
-      <div className="min-w-0">
-        <p className="text-label font-bold text-ink">
-          MyLife Hub <span className="font-medium text-muted">×</span> Bravo My Life
-        </p>
-        <p className="mt-0.5 text-caption text-muted">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
-      </div>
-      <div className="mt-1 min-w-0 md:mt-0 md:text-right">
-        <nav aria-label="법적 고지" className="flex flex-wrap items-center md:justify-end">
-          <Link href="/privacy" className="inline-flex min-h-[44px] items-center pr-4 text-caption font-semibold text-ink active:opacity-70">
-            개인정보 처리방침
-          </Link>
-          <Link href="/terms" className="inline-flex min-h-[44px] items-center pr-4 text-caption font-semibold text-ink active:opacity-70 md:pr-0">
-            이용약관
-          </Link>
-        </nav>
-        {/* 좁은 화면에서 'v0.1.0' 이 혼자 꺾이지 않게 항목 단위로만 줄바꿈한다 */}
-        <p className="tnum text-caption text-muted">
-          <span className="inline-block">Created by NamGiHoun</span> · <span className="inline-block">© 2026 MyLife Hub</span> ·{" "}
-          <span className="inline-block">v{VERSION}</span>
-        </p>
+    <footer className="mx-auto mt-8 w-full max-w-5xl border-t border-line px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-4 md:flex md:flex-row md:items-center md:justify-between md:gap-3">
+      <p className="text-caption text-muted md:whitespace-nowrap">
+        <span className="text-label font-bold text-ink">Bravo My Life</span>{" "}
+        <span className="inline-block">내 손안의 동네 생존 &amp; 찐노포 가이드</span>
+      </p>
+      <div className="tnum mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted md:mt-0 md:flex-nowrap md:justify-end md:gap-x-1.5 md:whitespace-nowrap">
+        <span className="whitespace-nowrap">Created by NamGiHoun</span>
+        <Dot />
+        <Link href="/privacy" className={linkCls}>
+          개인정보 처리방침
+        </Link>
+        <Dot />
+        <Link href="/terms" className={linkCls}>
+          이용약관
+        </Link>
+        <Dot />
+        <span className="whitespace-nowrap">© 2026 Bravo My Life</span>
+        <Dot />
+        <span className="whitespace-nowrap">v{VERSION}</span>
       </div>
     </footer>
   );

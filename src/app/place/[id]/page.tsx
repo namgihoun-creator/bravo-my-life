@@ -64,6 +64,7 @@ function PlaceDetail({ place }: { place: Place }) {
   const jsonLd = JSON.stringify(restaurantJsonLd(place)).replace(/</g, "\\u003c");
 
   return (
+    <>
     <div className="mx-auto w-full max-w-md md:max-w-2xl">
     <main className="px-4 pb-4 pt-3">
       <ModeAttr mode="nopo" />
@@ -154,8 +155,9 @@ function PlaceDetail({ place }: { place: Place }) {
         지도에서 주변 노포 더 보기
       </Link>
     </main>
-    <Footer />
     </div>
+    <Footer />
+    </>
   );
 }
 

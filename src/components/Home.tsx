@@ -1254,6 +1254,7 @@ export default function Home() {
       : { lat: loc.lat, lng: loc.lng, name: loc.kind === "gps" ? "현재 위치" : loc.name };
 
   return (
+    <>
     <div className="mx-auto min-h-dvh w-full max-w-md overflow-x-clip md:max-w-2xl">
       <InstallBar />
       <header className="px-4 pt-[max(20px,env(safe-area-inset-top))]">
@@ -1546,8 +1547,6 @@ export default function Home() {
         </div>
       </main>
 
-      <Footer />
-
 
       {coupleOpen && <CoupleSheet onClose={() => setCoupleOpen(false)} />}
 
@@ -1580,5 +1579,7 @@ export default function Home() {
         />
       )}
     </div>
+    <Footer />
+    </>
   );
 }

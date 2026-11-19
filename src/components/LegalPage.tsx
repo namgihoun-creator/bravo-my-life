@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 /** /privacy·/terms 공통 틀: 읽기 전용 정적 페이지(모달이 아니라 URL을 가진다 — 검색·공유·뒤로가기가 그대로 동작) */
 export default function LegalPage({ title, updated, children }: { title: string; updated: string; children: React.ReactNode }) {
   return (
+    <>
     <div className="mx-auto w-full max-w-md md:max-w-2xl">
       <main className="px-4 pb-4 pt-3">
         <Link href="/" className="inline-flex min-h-[44px] items-center gap-1 text-label font-semibold text-primary">
@@ -17,7 +18,8 @@ export default function LegalPage({ title, updated, children }: { title: string;
           {children}
         </div>
       </main>
-      <Footer />
     </div>
+      <Footer />
+    </>
   );
 }
