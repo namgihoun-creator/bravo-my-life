@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ToastHost from "@/components/ToastHost";
+import { SITE_URL } from "@/lib/site";
 
-const SITE_URL = "https://bravo-mylife.vercel.app";
 const OG_TITLE = "Bravo My Life — 내 주변 찐노포 & 생활 편의 탐색";
 const OG_DESC =
   "30년 넘은 찐노포 맛집부터 급할 때 찾는 개방화장실·공영주차장·세탁방까지, 내 주변 알짜 장소를 한눈에 찾고 길찾기까지 한 번에.";

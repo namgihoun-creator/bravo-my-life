@@ -6,6 +6,7 @@ import {
   ChevronDown,
   HeartHandshake,
   TriangleAlert,
+  ChevronRight,
   Heart,
   LocateFixed,
   MapPin,
@@ -46,6 +47,7 @@ import { pushFavorite, pushVisited, useCouple } from "@/lib/couple";
 import { cleanNote, NOTE_MAX, removeVisited, setVisited, useVisited } from "@/lib/visited";
 import CoupleSheet from "@/components/CoupleSheet";
 import HScroll from "@/components/HScroll";
+import Link from "next/link";
 import AddressLine from "@/components/AddressLine";
 import { getOpenState } from "@/lib/openStatus";
 import { sharePlace } from "@/lib/share";
@@ -824,10 +826,26 @@ function PlaceCard({
           인근 공영주차장 보기 · 도보 {near.walkMin}분
         </button>
       )}
-      {syncedLabel(place) && (
-        <p className="tnum mt-2 text-right text-caption text-muted" title="데이터를 마지막으로 확인한 달">
-          {syncedLabel(place)}
-        </p>
+      {(place.mode === "nopo" || syncedLabel(place)) && (
+        <div className="mt-1 flex items-center justify-between gap-2">
+          {place.mode === "nopo" ? (
+            <Link
+              href={`/place/${place.id}`}
+              prefetch={false}
+              className="inline-flex min-h-[44px] items-center gap-0.5 text-label font-semibold text-primary active:opacity-70"
+            >
+              상세보기
+              <ChevronRight size={14} aria-hidden />
+            </Link>
+          ) : (
+            <span />
+          )}
+          {syncedLabel(place) && (
+            <p className="tnum text-caption text-muted" title="데이터를 마지막으로 확인한 달">
+              {syncedLabel(place)}
+            </p>
+          )}
+        </div>
       )}
     </article>
   );

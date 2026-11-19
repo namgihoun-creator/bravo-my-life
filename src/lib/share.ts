@@ -1,5 +1,6 @@
 import { foodLabel, yearsInBusiness, type Place } from "@/data/places";
 import { isMobileDevice } from "@/lib/navigation";
+import { placeUrl } from "@/lib/site";
 import { showToast } from "@/lib/toast";
 
 export const SHARE_COPIED_MESSAGE = "가게 정보와 지도 링크를 복사했어요. 카카오톡에 붙여넣어 보세요!";
@@ -9,6 +10,7 @@ export const SHARE_COPIED_MESSAGE = "가게 정보와 지도 링크를 복사했
  * [브라보 마이 라이프] {가게명} ({업력 N년} · {음식 업종})
  * 📍 {주소}
  * 🗺️ 지도 보기: https://map.kakao.com/link/map/{name},{lat},{lng}
+ * 🔗 상세 보기: {SITE_URL}/place/{id}   (노포만 — 미리보기(OG)가 가게 이름·업력으로 뜬다)
  */
 export function buildShareText(p: Place): string {
   const parts: string[] = [];
@@ -21,6 +23,7 @@ export function buildShareText(p: Place): string {
   const lines = [`[브라보 마이 라이프] ${p.name}${parts.length ? ` (${parts.join(" · ")})` : ""}`];
   if (p.address) lines.push(`📍 ${p.address}`);
   lines.push(`🗺️ 지도 보기: https://map.kakao.com/link/map/${encodeURIComponent(p.name)},${p.lat},${p.lng}`);
+  if (p.mode === "nopo") lines.push(`🔗 상세 보기: ${placeUrl(p.id)}`);
   return lines.join("\n");
 }
 
