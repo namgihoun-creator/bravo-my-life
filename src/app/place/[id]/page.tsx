@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Award, TriangleAlert, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, Award, ChevronRight, TriangleAlert, UtensilsCrossed } from "lucide-react";
 import AddressLine from "@/components/AddressLine";
+import CategoryIcon from "@/components/CategoryIcon";
 import ModeAttr from "@/components/ModeAttr";
 import NavigationButton from "@/components/NavigationButton";
-import { ageTier, fieldInfo, syncedLabel, yearsInBusiness, type Place } from "@/data/places";
-import { getIndexablePlaces, getPlaceById, isIndexable } from "@/lib/placeServer";
+import PlaceHours from "@/components/PlaceHours";
+import PlaceShareButton from "@/components/PlaceShareButton";
+import { ageTier, fieldInfo, syncedLabel, walkMinutes, yearsInBusiness, type Place } from "@/data/places";
+import { getIndexablePlaces, getNearbyNopo, getNearbyParking, getPlaceById, isIndexable } from "@/lib/placeServer";
 import { foodParts, placeDescription, placeTitle, restaurantJsonLd } from "@/lib/placeSeo";
 import { placeUrl } from "@/lib/site";
 
@@ -105,6 +108,16 @@ function PlaceDetail({ place }: { place: Place }) {
 
         <p className="mt-2 text-label text-muted">공공 인허가 데이터로 업력을 확인한 가게예요. 블로그 원문이나 타인의 사진은 싣지 않아요.</p>
 
+        {place.tags.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="핵심 스펙">
+            {place.tags.slice(0, 6).map((t) => (
+              <li key={t} className="rounded-full bg-tag-bg px-2.5 py-1 text-caption font-medium text-tag-text">
+                {t}
+              </li>
+            ))}
+          </ul>
+        )}
+
         {hasInfo && (
           <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="운영 정보">
             {info.hours && <li className="rounded-lg bg-accent px-2.5 py-1 text-label font-bold text-on-accent">영업 {info.hours}</li>}
@@ -119,20 +132,95 @@ function PlaceDetail({ place }: { place: Place }) {
           </ul>
         )}
 
+        <PlaceHours place={place} />
+
         <div className="mt-3 flex gap-2">
           <NavigationButton target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }} />
+          <PlaceShareButton place={place} />
         </div>
 
         {syncedLabel(place) && <p className="tnum mt-2 text-right text-caption text-muted">{syncedLabel(place)}</p>}
       </article>
 
+      <NearbyParkingBox lat={place.lat} lng={place.lng} />
+      <NearbyNopoList id={place.id} lat={place.lat} lng={place.lng} />
+
       <Link
         href="/"
-        className="theme-t mt-4 flex min-h-[48px] w-full items-center justify-center rounded-xl bg-primary px-4 text-label font-bold text-on-primary active:opacity-90"
+        className="theme-t mt-5 flex min-h-[48px] w-full items-center justify-center rounded-xl bg-primary px-4 text-label font-bold text-on-primary active:opacity-90"
       >
         지도에서 주변 노포 더 보기
       </Link>
       <p className="mt-3 text-center text-caption text-muted">Bravo My Life · 광고 없는 진짜 로컬 노포 가이드</p>
     </main>
+  );
+}
+
+const distLabel = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`);
+
+/** 도보권 공영주차장 1~2곳을 접지 않고 바로 보여 준다. 없으면 박스 자체를 그리지 않는다. */
+async function NearbyParkingBox({ lat, lng }: { lat: number; lng: number }) {
+  const list = await getNearbyParking(lat, lng);
+  if (list.length === 0) return null;
+  return (
+    <section aria-label="주변 공영주차장" className="theme-t mt-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+      <h2 className="flex items-center gap-1.5 text-label font-bold text-ink">
+        <CategoryIcon k="parking" size={16} />
+        주변 공영주차장
+      </h2>
+      <ul className="mt-2 divide-y divide-line">
+        {list.map((p) => (
+          <li key={p.id} className="py-2 first:pt-0 last:pb-0">
+            <p className="text-label font-semibold text-ink [overflow-wrap:anywhere]">{p.name}</p>
+            <p className="tnum text-caption text-muted">
+              도보 {walkMinutes(p.distanceM)}분 · {distLabel(p.distanceM)}
+            </p>
+            {/* 좁은 화면에서도 이름이 한 글자씩 꺾이지 않게 요금은 이름 아래 줄에 둔다 */}
+            <span
+              className={`mt-1 inline-block max-w-full rounded-lg px-2 py-0.5 text-caption font-bold [overflow-wrap:anywhere] ${
+                p.fee === null ? "border border-line text-muted" : p.free ? "border border-success text-success" : "bg-accent text-on-accent"
+              }`}
+            >
+              {p.fee === null ? "요금 정보 없음" : p.free ? p.fee : `요금 ${p.fee}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 반경 1km 이내 색인 가능한 다른 노포 최대 3곳(내부 링크). */
+async function NearbyNopoList({ id, lat, lng }: { id: string; lat: number; lng: number }) {
+  const list = await getNearbyNopo(id, lat, lng);
+  if (list.length === 0) return null;
+  return (
+    <section aria-label="주변 다른 노포" className="mt-5">
+      <h2 className="px-1 text-label font-bold text-ink">주변 다른 노포</h2>
+      <ul className="mt-2 space-y-2">
+        {list.map((n) => {
+          const tier = n.years !== null ? ageTier(n.years) : null;
+          return (
+            <li key={n.id}>
+              <Link
+                href={`/place/${n.id}`}
+                className="theme-t flex min-h-[56px] items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 active:opacity-80"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-label font-bold text-ink [overflow-wrap:anywhere]">{n.name}</p>
+                  <p className="tnum text-caption text-muted">
+                    {[n.food, distLabel(n.distanceM)].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                {tier && n.years !== null && (
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-caption font-bold age-badge age-badge-${tier}`}>업력 {n.years}년</span>
+                )}
+                <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

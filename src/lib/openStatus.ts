@@ -120,7 +120,7 @@ export const LLM_HOURS_PREFIX = "llm_hours:";
 const HM_STRICT = /^([01]?\d|2[0-4]):[0-5]\d~([01]?\d|2[0-4]):[0-5]\d$/;
 
 /** 저장된 JSON을 엄격히 검증해 읽는다. 형식이 어긋나면 통째로 무시(null)해 잘못된 값이 영업 상태로 번지지 않게 한다. */
-function readLlmHours(place: Place): FieldSource | null {
+export function readLlmHours(place: Place): FieldSource | null {
   const raw = (place.extra ?? []).find((e) => e.startsWith(LLM_HOURS_PREFIX));
   if (!raw) return null;
   try {

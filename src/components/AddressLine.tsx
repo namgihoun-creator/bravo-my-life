@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, MapPin } from "lucide-react";
+import { Check, Copy, MapPin } from "lucide-react";
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -24,7 +24,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** 노포 카드 주소 줄: 탭하면 주소가 복사되고 '복사됨'이 잠깐 보인다. 긴 주소는 2줄까지. */
+/** 노포 카드 주소 줄: 우측 복사 아이콘이 탭하면 주소를 복사하고 체크로 바뀐다(1.6초). 긴 주소는 2줄까지, 아이콘은 첫 줄에 맞춘다. */
 export default function AddressLine({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -47,19 +47,19 @@ export default function AddressLine({ address }: { address: string }) {
       type="button"
       onClick={onCopy}
       aria-label={`주소 복사: ${address}`}
-      className="-my-2 mt-0.5 flex min-h-[44px] w-full min-w-0 items-center gap-1.5 text-left text-label text-muted"
+      className="-my-2 mt-0.5 flex min-h-[44px] w-full min-w-0 items-start gap-1.5 py-[13px] text-left text-label text-muted"
     >
-      <MapPin size={14} strokeWidth={2} className="shrink-0" aria-hidden />
+      {/* 아이콘은 첫 줄(line-height 1.4 ≈ 18px) 가운데에 맞춘다 */}
+      <MapPin size={14} strokeWidth={2} className="mt-[2px] shrink-0" aria-hidden />
       <span className="line-clamp-2 min-w-0 flex-1 leading-[1.4] [overflow-wrap:anywhere]">{address}</span>
-      {copied && (
-        <span
-          role="status"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-tag-bg px-2 py-0.5 text-caption font-bold text-tag-text"
-        >
-          <Check size={12} strokeWidth={2.5} aria-hidden />
-          복사됨
-        </span>
+      {copied ? (
+        <Check size={14} strokeWidth={2.5} className="mt-[2px] shrink-0 text-success" aria-hidden />
+      ) : (
+        <Copy size={14} strokeWidth={2} className="mt-[2px] shrink-0" aria-hidden />
       )}
+      <span role="status" className="sr-only">
+        {copied ? "주소가 복사됐어요" : ""}
+      </span>
     </button>
   );
 }

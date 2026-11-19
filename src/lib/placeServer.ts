@@ -1,5 +1,5 @@
 import { cacheLife } from "next/cache";
-import { isVisiblePlace, type Place } from "@/data/places";
+import { feeEntries, foodLabel, isVisiblePlace, yearsInBusiness, type Place } from "@/data/places";
 import { getSupabase } from "@/lib/supabase";
 
 /**
@@ -65,4 +65,77 @@ export async function getIndexablePlaces(): Promise<IndexableRef[]> {
     if (!data || data.length < 1000) break;
   }
   return out;
+}
+
+/* ───────────── 상세 페이지 부가 정보 (기존 RPC 재사용 · 'days' 캐시로 크롤러 방문 때 DB 호출을 막는다) ───────────── */
+
+export interface NearbyParking {
+  id: string;
+  name: string;
+  distanceM: number;
+  /** 요금 요약 (없으면 null → '요금 정보 없음') */
+  fee: string | null;
+  free: boolean;
+}
+
+/** 가게 좌표 기준 도보권(500m, 없으면 800m) 공영주차장 최대 2곳. 없으면 빈 배열(박스를 숨긴다). */
+export async function getNearbyParking(lat: number, lng: number): Promise<NearbyParking[]> {
+  "use cache";
+  cacheLife("days");
+  for (const radius of [500, 800]) {
+    const { data, error } = await getSupabase().rpc("bml_get_nearby_places", {
+      p_lat: lat,
+      p_lng: lng,
+      p_radius_m: radius,
+      p_mode: "survival",
+      p_limit: 300,
+    });
+    if (error) throw new Error(`주변 주차장 조회 실패: ${error.message}`);
+    const found = ((data ?? []) as Place[]).filter((p) => p.category === "parking").slice(0, 2);
+    if (found.length > 0) {
+      return found.map((p) => {
+        const fee = feeEntries(p)[0] ?? null;
+        return {
+          id: p.id,
+          name: p.name,
+          distanceM: Math.round(p.distance_m),
+          fee: fee ? fee.text : null,
+          free: fee ? fee.free : false,
+        };
+      });
+    }
+  }
+  return [];
+}
+
+export interface NearbyNopo {
+  id: string;
+  name: string;
+  food: string | null;
+  years: number | null;
+  distanceM: number;
+}
+
+/** 반경 1km 이내 다른 노포 최대 3곳(거리순). 404·noindex 로 이어지는 곳(미검증·폐업 의심·유저 제보)은 연결하지 않는다. */
+export async function getNearbyNopo(id: string, lat: number, lng: number): Promise<NearbyNopo[]> {
+  "use cache";
+  cacheLife("days");
+  const { data, error } = await getSupabase().rpc("bml_get_nearby_places", {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_m: 1000,
+    p_mode: "nopo",
+    p_limit: 60,
+  });
+  if (error) throw new Error(`주변 노포 조회 실패: ${error.message}`);
+  return ((data ?? []) as Place[])
+    .filter((p) => p.id !== id && p.mode === "nopo" && isVisiblePlace(p) && isIndexable(p))
+    .slice(0, 3)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      food: foodLabel(p),
+      years: yearsInBusiness(p),
+      distanceM: Math.round(p.distance_m),
+    }));
 }
