@@ -21,10 +21,10 @@ export default function PlaceHours({ place }: { place: Place }) {
     : null;
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
   const isLlm = open ? !!open.isLlm : !!llm;
-  if (!open?.status && !open?.reason && !llm) return null;
-
   const tone = open?.status ? "success" : "danger";
   const text = open?.status ? open.label : open?.reason;
+  // 그릴 내용(상태 줄 또는 블로그 추정 목록)이 하나도 없으면 빈 테두리 박스를 남기지 않고 통째로 숨긴다
+  if (!(open && text) && !(llm && isLlm)) return null;
 
   return (
     <section aria-label="영업 상태" className="mt-3 rounded-xl border border-line bg-bg p-3">

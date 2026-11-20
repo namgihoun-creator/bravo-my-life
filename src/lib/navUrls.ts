@@ -44,6 +44,44 @@ export function buildNaverWebUrl(target: NavTarget, origin?: NavOrigin): string 
   return `https://map.naver.com/p/directions/${start}/-/${target.lng},${target.lat},${encodeURIComponent(target.name)}/-/${mode}`;
 }
 
+/**
+ * 네이버 장소 검색어: `구(또는 시·군) + 상호명`. 도로명주소 전체는 네이버 등록 표기와 달라 결과가 비는 일이 많아 쓰지 않는다.
+ * 주소 앞 3토큰에서 '○○구'를 찾고(수원시 팔달구 → 팔달구), 없으면 두 번째 토큰(시·군)을 쓴다. 주소가 없으면 상호명만.
+ */
+export function naverSearchQuery(name: string, address?: string | null): string {
+  const tokens = (address ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  const gu = tokens.find((t, i) => i > 0 && /[가-힣]구$/.test(t));
+  const area = gu ?? (tokens[1] && /[가-힣][시군]$/.test(tokens[1]) ? tokens[1] : "");
+  return `${area} ${name}`.trim();
+}
+
+/** 네이버지도 앱 통합검색(`nmap://search`는 query·appname 만 받는다 — 좌표 파라미터 없음) */
+export function buildNaverSearchAppUrl(query: string, appName: string = DEFAULT_APP_NAME): string {
+  return `nmap://search?query=${encodeURIComponent(query)}&appname=${encodeURIComponent(appName)}`;
+}
+
+/** 네이버지도 웹 검색(앱이 없을 때의 폴백) */
+export function buildNaverSearchWebUrl(query: string): string {
+  return `https://map.naver.com/p/search/${encodeURIComponent(query)}`;
+}
+
+/**
+ * 전화 걸기 링크: 숫자·하이픈만 허용하고 9~11자리일 때만 만든다(그 외 형식은 버튼을 숨긴다).
+ * 010 등 휴대폰 번호는 개인 번호일 수 있고 상세 페이지는 검색 엔진에 색인되므로 노출하지 않는다(유선·대표번호만).
+ */
+export function telHref(phone: string | null | undefined): string | null {
+  const p = (phone ?? "").trim();
+  if (!/^[0-9][0-9-]*$/.test(p)) return null;
+  const digits = p.replace(/-/g, "");
+  if (/^01[016789]/.test(digits)) return null;
+  return digits.length >= 9 && digits.length <= 11 ? `tel:${digits}` : null;
+}
+
+/** 카카오맵 장소 페이지: 검색이 아니라 장소 하나를 정확히 가리킨다(숫자 id 만 허용) */
+export function buildKakaoPlaceUrl(kakaoId: string | null | undefined): string | null {
+  return kakaoId && /^\d{1,20}$/.test(kakaoId) ? `https://place.map.kakao.com/${kakaoId}` : null;
+}
+
 export function buildKakaoUrl({ name, lat, lng }: NavTarget): string {
   return `https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`;
 }

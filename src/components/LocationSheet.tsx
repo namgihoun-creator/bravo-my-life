@@ -3,7 +3,7 @@
 import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed, MapPin, Search, X } from "lucide-react";
-import { HUBS } from "@/data/places";
+import { HUBS, HUB_GROUPS } from "@/data/places";
 import {
   forgetPlace,
   getRecentRaw,
@@ -22,6 +22,23 @@ export interface PickedLocation {
 interface Result extends PickedLocation {
   address: string;
 }
+
+/** 권역별 거점 묶음(모듈 상수라 렌더마다 다시 계산하지 않는다). 어느 권역에도 없는 거점은 '기타'로 뒤에 붙는다. */
+const hubSections = (() => {
+  const byName = new Map(HUBS.map((h) => [h.name, h]));
+  const used = new Set<string>();
+  const sections = HUB_GROUPS.map((g) => ({
+    label: g.label,
+    hubs: g.names.flatMap((n) => {
+      const h = byName.get(n);
+      if (!h) return [];
+      used.add(n);
+      return [h];
+    }),
+  })).filter((s) => s.hubs.length > 0);
+  const rest = HUBS.filter((h) => !used.has(h.name));
+  return rest.length > 0 ? [...sections, { label: "기타", hubs: rest }] : sections;
+})();
 
 export default function LocationSheet({
   onClose,
@@ -195,17 +212,22 @@ export default function LocationSheet({
           ) : (
             <div>
               <p className="text-caption font-semibold text-muted">서울·경기 주요 거점</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {HUBS.map((h) => (
-                  <button
-                    key={h.name}
-                    onClick={() => choose(h)}
-                    className="min-h-[44px] cursor-pointer rounded-full border border-line bg-bg px-4 text-label font-semibold"
-                  >
-                    {h.name}
-                  </button>
-                ))}
-              </div>
+              {hubSections.map((s) => (
+                <section key={s.label} className="mt-3" aria-label={s.label}>
+                  <h3 className="text-caption font-bold text-ink">{s.label}</h3>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {s.hubs.map((h) => (
+                      <button
+                        key={h.name}
+                        onClick={() => choose(h)}
+                        className="min-h-[44px] cursor-pointer rounded-full border border-line bg-bg px-4 text-label font-semibold"
+                      >
+                        {h.name}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
           )}
         </div>

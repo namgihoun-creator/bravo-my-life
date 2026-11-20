@@ -3,6 +3,8 @@ import { showToast } from "@/lib/toast";
 import {
   buildKakaoUrl,
   buildNaverAppUrl,
+  buildNaverSearchAppUrl,
+  buildNaverSearchWebUrl,
   buildNaverWebUrl,
   buildTmapUrl,
   type NavApp,
@@ -144,6 +146,16 @@ function openExternal(url: string) {
 function naverAppName(): string | undefined {
   const host = window.location.hostname;
   return host && host !== "localhost" && host !== "127.0.0.1" ? host : undefined;
+}
+
+/**
+ * 네이버 장소 검색 열기(영업정보·임시휴무·최근 후기 확인용). 길찾기와 같은 방식: 모바일은 앱 스킴을 먼저 호출하고
+ * 1.5초 안에 전환이 없으면 웹 검색으로, 데스크톱은 곧바로 웹 검색을 새 탭으로 연다.
+ */
+export function openNaverPlaceSearch(query: string) {
+  const webUrl = buildNaverSearchWebUrl(query);
+  if (!isMobileDevice()) return openExternal(webUrl);
+  return launchScheme(buildNaverSearchAppUrl(query, naverAppName()), () => window.location.assign(webUrl));
 }
 
 /**

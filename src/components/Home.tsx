@@ -75,6 +75,8 @@ const MIN_RESULTS = 5;
 const EXPANDED_RADIUS_M = 5000;
 /** 인접 거점 안내 배너: 이미 거점에서 이 거리 안이면(=지역 자체가 한산) 보여 주지 않는다 */
 const HUB_BANNER_MIN_M = 1500;
+/** 가장 가까운 거점이 이 거리 밖이면 배너 문구를 '아직 지원하지 않는 지역'으로 바꾼다 */
+const UNSUPPORTED_HUB_M = 30_000;
 const EMPTY: Place[] = []; // 로딩 중 반환값을 안정된 참조로 유지 (지도 재그리기 방지)
 
 type View = "list" | "map";
@@ -1289,7 +1291,10 @@ export default function Home() {
           return !best || m < best.m ? { hub: h, m } : best;
         }, null);
   const fewResults = !loading && !error && !anchor && staleAt === null && modeCount < MIN_RESULTS;
-  const hubBanner = fewResults && nearestHub && nearestHub.m >= HUB_BANNER_MIN_M ? nearestHub.hub : null;
+  const hubBannerInfo = fewResults && nearestHub && nearestHub.m >= HUB_BANNER_MIN_M ? nearestHub : null;
+  const hubBanner = hubBannerInfo?.hub ?? null;
+  // 가장 가까운 거점이 30km 밖이면 '데이터가 적은 동네'가 아니라 '아직 지원하지 않는 지역'으로 안내한다
+  const unsupportedArea = !!hubBannerInfo && hubBannerInfo.m >= UNSUPPORTED_HUB_M;
 
   return (
     <>
@@ -1457,7 +1462,9 @@ export default function Home() {
           >
             <MapPin size={16} className="shrink-0" aria-hidden />
             <span className="min-w-0 [overflow-wrap:anywhere]">
-              근처에 등록된 장소가 적어요 · {hubBanner.name} 인근으로 보기
+              {unsupportedArea
+                ? `이 지역은 아직 지원하지 않아요 · 가장 가까운 ${hubBanner.name} 인근(${Math.round((hubBannerInfo?.m ?? 0) / 1000)}km)으로 보기`
+                : `근처에 등록된 장소가 적어요 · ${hubBanner.name} 인근으로 보기`}
             </span>
           </button>
         )}

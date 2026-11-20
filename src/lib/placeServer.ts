@@ -5,10 +5,11 @@ import { getSupabase } from "@/lib/supabase";
 /**
  * 상세 페이지·sitemap 용 서버 조회 (publishable 키만 사용).
  * RLS 가 `select using (true)` 이고 `is_active=false` 행도 보이므로 반드시 컬럼을 명시하고 is_active 로 거른다.
- * phone·source·source_key·kakao_id 같은 내부 컬럼은 가져오지 않는다.
+ * 가져오는 컬럼은 화면에 쓰는 것만이다(source·source_key 같은 내부 컬럼은 제외).
+ * phone(업소 공개 번호)·kakao_id 는 상세 페이지의 전화·카카오맵 버튼용으로 의도적으로 포함한다.
  */
 const PUBLIC_COLUMNS =
-  "id,mode,category,extra,name,address,place_url,badge,tags,summary,lat,lng,feedback,open_year,last_synced_at,reported_issue,closure_reports";
+  "id,mode,category,extra,name,address,place_url,badge,tags,summary,lat,lng,feedback,open_year,last_synced_at,reported_issue,closure_reports,phone,kakao_id";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const USER_REPORT_TAG = "#유저제보";

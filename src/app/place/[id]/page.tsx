@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Award, ChevronRight, TriangleAlert, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, Award, ChevronRight, Phone, TriangleAlert, UtensilsCrossed } from "lucide-react";
 import AddressLine from "@/components/AddressLine";
 import CategoryIcon from "@/components/CategoryIcon";
 import Footer from "@/components/Footer";
 import ModeAttr from "@/components/ModeAttr";
 import NavigationButton from "@/components/NavigationButton";
 import PlaceHours from "@/components/PlaceHours";
+import PlaceInfoLinks from "@/components/PlaceInfoLinks";
+import PlaceIssueButton from "@/components/PlaceIssueButton";
 import PlaceShareButton from "@/components/PlaceShareButton";
 import { ageTier, fieldInfo, syncedLabel, walkMinutes, yearsInBusiness, type Place } from "@/data/places";
 import { getIndexablePlaces, getNearbyNopo, getNearbyParking, getPlaceById, isIndexable } from "@/lib/placeServer";
 import { foodParts, placeDescription, placeTitle, restaurantJsonLd } from "@/lib/placeSeo";
 import { placeUrl } from "@/lib/site";
+import { buildKakaoPlaceUrl, telHref } from "@/lib/navUrls";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -61,6 +64,7 @@ function PlaceDetail({ place }: { place: Place }) {
   const food = foodParts(place);
   const info = fieldInfo(place);
   const hasInfo = info.hours || info.breakTime || info.closedDays.length > 0;
+  const tel = telHref(place.phone);
   const jsonLd = JSON.stringify(restaurantJsonLd(place)).replace(/</g, "\\u003c");
 
   return (
@@ -137,8 +141,20 @@ function PlaceDetail({ place }: { place: Place }) {
 
         <PlaceHours place={place} />
 
+        <PlaceInfoLinks name={place.name} address={place.address} kakaoUrl={buildKakaoPlaceUrl(place.kakao_id)} />
+
         <div className="mt-3 flex gap-2">
           <NavigationButton target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }} />
+          {tel && (
+            <a
+              href={tel}
+              aria-label={`${place.name}에 전화하기`}
+              className="theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-line bg-surface text-ink active:opacity-80"
+            >
+              <Phone size={16} aria-hidden />
+              <span className="text-caption font-semibold">전화</span>
+            </a>
+          )}
           <PlaceShareButton place={place} />
         </div>
 
@@ -147,6 +163,8 @@ function PlaceDetail({ place }: { place: Place }) {
 
       <NearbyParkingBox lat={place.lat} lng={place.lng} />
       <NearbyNopoList id={place.id} lat={place.lat} lng={place.lng} />
+
+      <PlaceIssueButton place={place} />
 
       <Link
         href="/"
