@@ -66,7 +66,8 @@ export default function LocationSheet({
 
   useModalHistory(onClose);
   useEffect(() => {
-    inputRef.current?.focus();
+    // 터치 기기에서는 자동 포커스를 하지 않는다(키보드가 거점 칩을 가림). 사용자가 입력창을 탭하면 그때 올라온다.
+    if (!window.matchMedia("(pointer: coarse)").matches) inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -111,7 +112,7 @@ export default function LocationSheet({
         role="dialog"
         aria-modal="true"
         aria-label="동네 설정"
-        className="sheet-up relative w-full max-w-md rounded-t-2xl bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))] text-ink shadow-sticky"
+        className="sheet-up relative max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))] text-ink shadow-sticky"
       >
         <div className="sheet-grabber" aria-hidden />
         <div className="flex items-center justify-between">
@@ -187,7 +188,7 @@ export default function LocationSheet({
           {message}
         </p>
 
-        <div className="max-h-[40dvh] overflow-y-auto">
+        <div>
           {results ? (
             results.length === 0 ? (
               <p className="py-6 text-center text-body text-muted">검색 결과가 없어요.</p>
