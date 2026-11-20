@@ -127,7 +127,7 @@ export const FEEDBACK_CHIPS: Record<string, FeedbackChipDef[]> = {
   general: NOPO_CHIPS,
 };
 
-/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 36곳) */
+/** 동네 설정 바텀시트의 빠른 선택 거점 (수집 스크립트의 HUBS와 동일, 54곳) */
 export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "홍대입구역", lat: 37.5572, lng: 126.9245 },
   { name: "성수역", lat: 37.5446, lng: 127.056 },
@@ -164,7 +164,25 @@ export const HUBS: { name: string; lat: number; lng: number }[] = [
   { name: "모란역", lat: 37.434, lng: 127.13 },
   { name: "수지구청역", lat: 37.3225, lng: 127.0947 },
   { name: "철산역", lat: 37.4762, lng: 126.8682 },
-  { name: "정왕역", lat: 37.3517, lng: 126.7434 },
+  // 생활권 보강: 수원 전역·근교, 서울 남부(샤로수길·낙성대·이수), 부천 (collect_data.py HUBS 와 동일)
+  { name: "행궁동", lat: 37.2819, lng: 127.0148 },
+  { name: "인계동", lat: 37.2619, lng: 127.0309 },
+  { name: "영통역", lat: 37.2515, lng: 127.0713 },
+  { name: "광교중앙역", lat: 37.2884, lng: 127.0517 },
+  { name: "망포역", lat: 37.2457, lng: 127.0573 },
+  { name: "화서역", lat: 37.284, lng: 126.9896 },
+  { name: "장안구청", lat: 37.3039, lng: 127.0103 },
+  { name: "호매실", lat: 37.2664, lng: 126.9579 },
+  { name: "동탄역", lat: 37.1999, lng: 127.0957 },
+  { name: "병점역", lat: 37.2068, lng: 127.0332 },
+  { name: "죽전역", lat: 37.3244, lng: 127.1075 },
+  { name: "기흥역", lat: 37.2755, lng: 127.117 },
+  { name: "의왕역", lat: 37.3203, lng: 126.948 },
+  { name: "샤로수길(서울대입구역)", lat: 37.4813, lng: 126.9527 },
+  { name: "낙성대역", lat: 37.4771, lng: 126.9635 },
+  { name: "이수역", lat: 37.4853, lng: 126.9817 },
+  { name: "중동역", lat: 37.4867, lng: 126.7645 },
+  { name: "상동역", lat: 37.5058, lng: 126.7532 },
 ];
 
 export const FALLBACK_LOCATION = { name: "부천역 인근", lat: 37.4844, lng: 126.783 };

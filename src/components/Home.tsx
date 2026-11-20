@@ -60,6 +60,7 @@ import { hasVoted, setVoted, subscribeVotes } from "@/lib/votes";
 import CategoryIcon from "@/components/CategoryIcon";
 import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
+import { lastPlace } from "@/lib/recentPlaces";
 import ReportSheet from "./ReportSheet";
 import IssueReportSheet from "./IssueReportSheet";
 import { rememberMode, resolveStartMode } from "@/lib/startMode";
@@ -1021,17 +1022,21 @@ export default function Home() {
     return () => window.removeEventListener("online", onOnline);
   }, []);
 
-  // 최초 진입: GPS → 거부/실패 시 '부천역 인근' 폴백. 그 사이 사용자가 직접 고른 동네는 덮어쓰지 않는다.
+  // 최초 진입: GPS 허용 → 현재 위치, 거부/실패 → 마지막으로 고른 동네, 그것도 없으면 '부천역 인근'.
+  // (localStorage 는 effect 안에서만 읽어 서버 렌더와 어긋나지 않는다.) 그 사이 사용자가 직접 고른 동네는 덮어쓰지 않는다.
   useEffect(() => {
     let cancelled = false;
     getGps().then((p) => {
       if (cancelled) return;
+      const last = p ? null : lastPlace();
       setLoc((prev) =>
         prev.kind !== "pending"
           ? prev
           : p
             ? { kind: "gps", name: "현재 위치", ...p }
-            : FALLBACK,
+            : last
+              ? { kind: "search", ...last }
+              : FALLBACK,
       );
     });
     return () => {

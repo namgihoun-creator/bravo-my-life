@@ -13,7 +13,7 @@ export const metadata: Metadata = {
  */
 export default function PrivacyPage() {
   return (
-    <LegalPage title="개인정보 처리방침" updated="2026-11-19">
+    <LegalPage title="개인정보 처리방침" updated="2026-11-20">
       <section>
         <h2>1. 수집하지 않는 정보</h2>
         <p>
@@ -47,7 +47,8 @@ export default function PrivacyPage() {
       <section>
         <h2>3. 내 기기에만 저장되는 정보</h2>
         <p>
-          찜·다녀옴, 길찾기 앱 선택, 마지막으로 본 모드, 최근 조회 결과(오프라인용), 투표·제보 이력, 설치 안내 닫기 여부는 브라우저
+          찜·다녀옴, 길찾기 앱 선택, 마지막으로 본 모드, 최근·자주 가는 동네(이름과 좌표, 최대 3곳 — GPS를 쓸 수 없을 때 시작 위치로 사용),
+          최근 조회 결과(오프라인용), 투표·제보 이력, 설치 안내 닫기 여부는 브라우저
           저장소(localStorage·sessionStorage)와 서비스 워커 캐시에만 저장되며 서비스가 수집하지 않습니다. 브라우저 설정에서 사이트
           데이터를 지우면 삭제됩니다.
         </p>

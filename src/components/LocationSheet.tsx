@@ -1,9 +1,17 @@
 "use client";
 
 import { useModalHistory } from "@/lib/useModalHistory";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed, MapPin, Search, X } from "lucide-react";
 import { HUBS } from "@/data/places";
+import {
+  forgetPlace,
+  getRecentRaw,
+  getRecentRawServer,
+  parseRecent,
+  rememberPlace,
+  subscribeRecent,
+} from "@/lib/recentPlaces";
 
 export interface PickedLocation {
   name: string;
@@ -29,6 +37,15 @@ export default function LocationSheet({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const recentRaw = useSyncExternalStore(subscribeRecent, getRecentRaw, getRecentRawServer);
+  const recent = useMemo(() => parseRecent(recentRaw), [recentRaw]);
+
+  // 시트에서 직접 고른 동네만 저장한다(최근 3곳)
+  function choose(loc: PickedLocation) {
+    rememberPlace(loc);
+    onSelect(loc);
+  }
 
   useModalHistory(onClose);
   useEffect(() => {
@@ -111,10 +128,39 @@ export default function LocationSheet({
           </button>
         </form>
 
+        {recent.length > 0 && (
+          <div className="mt-3">
+            <p className="text-caption font-semibold text-muted">최근·자주 가는 동네</p>
+            <ul className="mt-1.5 flex flex-wrap gap-2">
+              {recent.map((r) => (
+                <li
+                  key={r.name}
+                  className="flex min-w-0 max-w-full items-center rounded-full border border-primary bg-tag-bg"
+                >
+                  <button
+                    onClick={() => choose(r)}
+                    className="flex min-h-[44px] min-w-0 cursor-pointer items-center gap-1 pl-3 pr-1 text-label font-semibold text-primary"
+                  >
+                    <MapPin size={14} className="shrink-0" aria-hidden />
+                    <span className="truncate">{r.name}</span>
+                  </button>
+                  <button
+                    onClick={() => forgetPlace(r.name)}
+                    aria-label={`${r.name} 목록에서 지우기`}
+                    className="flex h-11 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted"
+                  >
+                    <X size={14} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <button
           onClick={useGps}
           disabled={busy}
-          className="mt-2 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line text-label font-semibold text-primary disabled:opacity-50"
+          className="mt-3 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line text-label font-semibold text-primary disabled:opacity-50"
         >
           <LocateFixed size={16} aria-hidden />
           현재 위치(GPS)로 보기
@@ -133,7 +179,7 @@ export default function LocationSheet({
                 {results.map((r) => (
                   <li key={`${r.lat},${r.lng},${r.name}`}>
                     <button
-                      onClick={() => onSelect({ name: r.name, lat: r.lat, lng: r.lng })}
+                      onClick={() => choose({ name: r.name, lat: r.lat, lng: r.lng })}
                       className="flex min-h-[44px] w-full cursor-pointer items-start gap-2 border-b border-line py-2.5 text-left"
                     >
                       <MapPin size={16} className="mt-1 shrink-0 text-primary" aria-hidden />
@@ -153,7 +199,7 @@ export default function LocationSheet({
                 {HUBS.map((h) => (
                   <button
                     key={h.name}
-                    onClick={() => onSelect(h)}
+                    onClick={() => choose(h)}
                     className="min-h-[44px] cursor-pointer rounded-full border border-line bg-bg px-4 text-label font-semibold"
                   >
                     {h.name}
