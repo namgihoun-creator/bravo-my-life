@@ -62,6 +62,7 @@ import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import { lastPlace } from "@/lib/recentPlaces";
 import AreaRequestButton from "@/components/AreaRequestButton";
+import { LIVE_LABEL, LIVE_NOTICE, isLive, liveKakaoUrl, livePlacesFrom, snapLive, type LiveCategory } from "@/lib/livePlaces";
 import ReportSheet from "./ReportSheet";
 import IssueReportSheet from "./IssueReportSheet";
 import { rememberMode, resolveStartMode } from "@/lib/startMode";
@@ -275,6 +276,47 @@ function useNearby(loc: Loc, nonce: number, refresh: number) {
   };
 }
 
+/**
+ * 미등록 지역 실시간 폴백: 생존 모드에서 5km 확장 조회까지 끝났는데도 DB 생존 장소가 0건일 때만 카카오 카테고리 검색(약국·주차장)을
+ * 서버 라우트(/api/live-nearby)로 불러온다. 좌표를 0.005° 격자로 맞춰 보내 CDN 캐시를 태우고, 실제 위치 1km 안만 보여 준다.
+ * 결과는 DB·오프라인 캐시(bml_nearby_cache_v1)에 넣지 않는다. 실패하면 조용히 비운다(기존 빈 화면 안내가 그대로 나온다).
+ */
+function useLiveFallback(loc: Loc, enabled: boolean) {
+  const [res, setRes] = useState<{ key: string; places: Place[] } | null>(null);
+  const loadedKey = useRef<string | null>(null); // 이미 불러온 위치는 모드를 오가도 다시 부르지 않는다
+  const key = enabled && loc.kind !== "pending" ? `${loc.lat},${loc.lng}` : null;
+
+  useEffect(() => {
+    if (!key || loc.kind === "pending" || loadedKey.current === key) return;
+    const { lat, lng } = loc;
+    let cancelled = false;
+    // 오프라인이면 fetch 가 바로 실패해 아래 catch 에서 빈 결과로 마무리된다
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    const g = snapLive(lat, lng);
+    fetch(`/api/live-nearby?lat=${g.lat}&lng=${g.lng}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { places?: unknown }) => {
+        if (cancelled) return;
+        loadedKey.current = key;
+        setRes({ key, places: livePlacesFrom(d.places, { lat, lng }) });
+      })
+      .catch((e) => {
+        console.error("live-nearby", e);
+        if (!cancelled) setRes({ key, places: [] });
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [key, loc]);
+
+  const ready = key !== null && res !== null && res.key === key;
+  return { loading: key !== null && !ready, places: ready ? res.places : EMPTY };
+}
+
 /* ───────────────────────── UI 조각 ───────────────────────── */
 
 function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -360,7 +402,10 @@ function FilterChips({
   showOpenChip,
   openOnly,
   onToggleOpen,
+  liveLabels = false,
 }: {
+  /** 실시간 폴백 결과(약국·주차장)를 보여 주는 중이면 '심야약국'·'공영주차장' 대신 사실대로 '약국'·'주차장' */
+  liveLabels?: boolean;
   mode: Mode;
   value: string;
   /** 현재 반경 내 필터별 장소 수. null(로딩/오류)이면 모든 칩을 보여준다. */
@@ -415,7 +460,15 @@ function FilterChips({
       f.key,
       f.key === value,
       () => onChange(f.key),
-      f.key === "fav" ? (favCount > 0 ? `찜 ${favCount}` : "찜") : f.label,
+      f.key === "fav"
+        ? favCount > 0
+          ? `찜 ${favCount}`
+          : "찜"
+        : liveLabels && f.key === "pharmacy"
+          ? "약국"
+          : liveLabels && f.key === "parking"
+            ? "주차장"
+            : f.label,
       f.key === "fav" && favCount > 0,
     ),
   );
@@ -527,13 +580,14 @@ function PlaceCard({
   /** '정보 오류 제보' 바텀 시트 열기 */
   onReportIssue: (place: Place) => void;
 }) {
-  const near = nearestParking(place, all);
+  const liveCard = isLive(place.id); // 실시간 폴백 결과: DB 행이 아니라 찜·다녀옴·피드백·제보·공유·상세가 없다
+  const near = liveCard ? null : nearestParking(place, all);
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
   const isSurvival = place.mode === "survival";
   const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
   const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
   const dist = Math.round(place.distance_m);
-  const chips = FEEDBACK_CHIPS[place.category] ?? [];
+  const chips = liveCard ? [] : (FEEDBACK_CHIPS[place.category] ?? []);
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게
   const fees = place.category === "parking" ? feeEntries(place) : []; // 주차 요금·무료 개방
   const meta = placeMeta(place);
@@ -608,6 +662,13 @@ function PlaceCard({
           · {dist >= 1000 ? `${(dist / 1000).toFixed(1)}km` : `${dist}m`}
         </span>
       </p>
+
+      {liveCard && (
+        <p className="mt-1 flex items-center gap-1 text-label font-semibold text-muted">
+          <CategoryIcon k={place.category} size={14} />
+          {LIVE_LABEL[place.category as LiveCategory]}
+        </p>
+      )}
 
       {place.mode === "nopo" && place.address && <AddressLine address={place.address} />}
 
@@ -707,6 +768,7 @@ function PlaceCard({
         </div>
       )}
 
+      {!liveCard && (
       <div className="mt-3 flex flex-wrap gap-2">
         {chips.map((c) => (
           <FeedbackChip
@@ -757,6 +819,7 @@ function PlaceCard({
           </button>
         )}
       </div>
+      )}
 
       {visitedEntry &&
         (editing ? (
@@ -832,6 +895,23 @@ function PlaceCard({
           target={{ name: place.name, lat: place.lat, lng: place.lng, category: place.category }}
           origin={origin}
         />
+        {liveCard ? (
+          liveKakaoUrl(place) && (
+            <a
+              href={liveKakaoUrl(place) ?? undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${place.name} 카카오맵 정보 확인`}
+              className="theme-t flex h-12 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-label font-bold text-ink active:opacity-80"
+            >
+              <span aria-hidden className="nav-dot nav-dot-kakao">
+                K
+              </span>
+              <span className="whitespace-nowrap">카카오 정보</span>
+            </a>
+          )
+        ) : (
+          <>
         <button
           onClick={() => sharePlace(place)}
           aria-label={`${place.name} 공유하기`}
@@ -854,6 +934,8 @@ function PlaceCard({
           <Heart size={16} aria-hidden fill={fav ? "currentColor" : "none"} />
           <span className="text-caption font-semibold">찜</span>
         </button>
+          </>
+        )}
       </div>
 
       {near && (
@@ -942,9 +1024,19 @@ export default function Home() {
   const [anchor, setAnchor] = useState<Anchor | null>(null); // '주변 주차장' 기준 노포 (null이면 평소 화면)
   const nearby = useNearby(loc, nonce, refresh);
   const anchorData = useAnchorParking(anchor, nonce);
-  const loading = anchor ? anchorData.loading : nearby.loading;
+  // 미등록 지역 폴백: 생존 모드에서 DB 생존 장소가 0건일 때만(노포 모드·주차 기준점 보기에서는 부르지 않는다)
+  const survivalDbCount = nearby.places.filter((p) => p.mode === "survival").length;
+  const live = useLiveFallback(
+    loc,
+    mode === "survival" && !anchor && !nearby.loading && !nearby.error && nearby.staleAt === null && survivalDbCount === 0,
+  );
+  const loading = anchor ? anchorData.loading : nearby.loading || live.loading;
   const error = anchor ? anchorData.error : nearby.error;
-  const fetched = anchor ? anchorData.places : nearby.places;
+  const fetched = useMemo(
+    () => (anchor ? anchorData.places : live.places.length > 0 ? [...nearby.places, ...live.places] : nearby.places),
+    [anchor, anchorData.places, nearby.places, live.places],
+  );
+  const liveShown = !anchor && mode === "survival" && live.places.length > 0;
   const staleAt = anchor ? null : nearby.staleAt;
   const radiusExpanded = !anchor && nearby.expanded[mode];
   // 조회 결과 위에 최신 현장 정보(내 등록 + 실시간 수신)를 덮어쓴다
@@ -1283,7 +1375,8 @@ export default function Home() {
 
   // 결과가 적을 때(반경 5km 확장 뒤에도 현재 모드의 노출 장소 5곳 미만): 가장 가까운 거점으로 바로 이동하는 안내.
   // 필터·검색은 세지 않는다(칩을 좁혀 적게 나오는 경우와 구분). 이미 거점 1.5km 안이면 지역 자체가 한산한 것이라 숨긴다.
-  const modeCount = all.filter((p) => p.mode === mode && isVisiblePlace(p)).length;
+  // 실시간 폴백(live:) 결과는 세지 않는다: 세면 5곳이 넘는 순간 미지원 지역 배너·요청 버튼이 사라진다
+  const modeCount = all.filter((p) => p.mode === mode && isVisiblePlace(p) && !isLive(p.id)).length;
   const nearestHub =
     anchor || loc.kind === "pending"
       ? null
@@ -1421,6 +1514,7 @@ export default function Home() {
             visitedCount={visitedCount}
             onChange={changeFilter}
             showOpenChip={hasKnownHours}
+            liveLabels={liveShown}
             openOnly={openActive}
             onToggleOpen={() => {
               // '지금 영업 중'을 켜면 전체 기준으로 보며 다른 칩의 활성 표시는 꺼진다
@@ -1468,6 +1562,14 @@ export default function Home() {
                 : `근처에 등록된 장소가 적어요 · ${hubBanner.name} 인근으로 보기`}
             </span>
           </button>
+        )}
+        {liveShown && (
+          <p
+            role="note"
+            className="theme-t rounded-xl border border-line bg-surface px-3 py-2 text-label font-semibold text-ink [overflow-wrap:anywhere]"
+          >
+            {LIVE_NOTICE}
+          </p>
         )}
         {hubBanner && unsupportedArea && loc.kind !== "pending" && <AreaRequestButton lat={loc.lat} lng={loc.lng} />}
         {!hubBanner && radiusExpanded && !loading && !error && staleAt === null && (
