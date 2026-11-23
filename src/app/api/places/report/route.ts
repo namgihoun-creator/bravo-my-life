@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { clean, clientIp, createRateLimiter, inKorea, isSameOrigin, kakaoJson } from "@/lib/apiGuard";
 
 /**
  * POST /api/places/report — '우리 동네 장소 제보'
@@ -12,44 +13,9 @@ const CATEGORIES: Record<string, string[]> = {
   nopo: ["soup", "pocha", "solo", "general"],
 };
 
-const RATE_LIMIT = 5;
-const RATE_WINDOW_MS = 60 * 60 * 1000;
-const hits = new Map<string, number[]>();
-
-function rateLimited(ip: string) {
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) hits.clear();
-  return false;
-}
-
-/** 제어문자·태그 제거, 공백 정리 */
-function clean(s: unknown, max: number): string {
-  if (typeof s !== "string") return "";
-  return s
-    .replace(/[\u0000-\u001f\u007f<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
-}
+const rateLimited = createRateLimiter(5); // IP당 시간당 5건
 
 const SPAM = /https?:|www\.|[a-z0-9-]+\.(com|net|kr|io|me|co)\b|@|카톡|오픈채팅|텔레그램/i;
-
-function inKorea(lat: number, lng: number) {
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 33 && lat <= 39 && lng >= 124 && lng <= 132;
-}
-
-async function kakaoJson(url: string, key: string) {
-  const res = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` }, cache: "no-store" });
-  if (!res.ok) throw new Error(`kakao ${res.status}`);
-  return res.json();
-}
 
 /** 좌표 → 도로명/지번 주소 (실패해도 제보는 계속 진행) */
 async function reverse(lat: number, lng: number, key: string): Promise<string | null> {
@@ -86,12 +52,11 @@ const norm = (s: string) => s.replace(/[\s()\-_.·]/g, "").toLowerCase();
 
 export async function POST(req: NextRequest) {
   // 같은 출처에서 온 요청만 허용
-  const origin = req.headers.get("origin");
-  if (origin && new URL(origin).host !== req.headers.get("host")) {
+  if (!isSameOrigin(req)) {
     return NextResponse.json({ error: "허용되지 않은 요청이에요." }, { status: 403 });
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+  const ip = clientIp(req);
   if (rateLimited(ip)) {
     return NextResponse.json({ error: "제보는 1시간에 5건까지 가능해요. 잠시 후 다시 시도해 주세요." }, { status: 429 });
   }

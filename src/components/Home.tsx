@@ -61,6 +61,7 @@ import CategoryIcon from "@/components/CategoryIcon";
 import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import { lastPlace } from "@/lib/recentPlaces";
+import AreaRequestButton from "@/components/AreaRequestButton";
 import ReportSheet from "./ReportSheet";
 import IssueReportSheet from "./IssueReportSheet";
 import { rememberMode, resolveStartMode } from "@/lib/startMode";
@@ -1468,6 +1469,7 @@ export default function Home() {
             </span>
           </button>
         )}
+        {hubBanner && unsupportedArea && loc.kind !== "pending" && <AreaRequestButton lat={loc.lat} lng={loc.lng} />}
         {!hubBanner && radiusExpanded && !loading && !error && staleAt === null && (
           <p className="text-center text-caption text-muted" role="note">
             주변 2km 안에 장소가 적어 5km까지 넓혀 보여드려요

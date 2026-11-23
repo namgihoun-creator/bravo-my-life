@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { kakaoJson } from "@/lib/apiGuard";
 
 const KAKAO = "https://dapi.kakao.com/v2/local/search";
 
@@ -14,12 +15,7 @@ async function kakao(path: "keyword.json" | "address.json", q: string, key: stri
   const url = new URL(`${KAKAO}/${path}`);
   url.searchParams.set("query", q);
   url.searchParams.set("size", "5");
-  const res = await fetch(url, {
-    headers: { Authorization: `KakaoAK ${key}` },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`kakao ${res.status}`);
-  const data = (await res.json()) as { documents: KakaoDoc[] };
+  const data = (await kakaoJson(url.toString(), key)) as { documents: KakaoDoc[] };
   return data.documents;
 }
 
