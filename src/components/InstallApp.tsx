@@ -35,20 +35,21 @@ export default function InstallBar() {
         <div
           role="region"
           aria-label="바로가기 추가 안내"
-          className="flex h-12 w-full min-w-0 items-center gap-2 border-b border-[#DBEAFE] bg-[#EFF6FF] pl-4 pr-3 max-[359px]:gap-1.5 max-[359px]:px-2.5"
+          className="install-bar theme-t flex h-12 w-full min-w-0 items-center gap-2 border-b border-[var(--ib-line)] bg-[var(--ib-bg)] pl-4 pr-3 max-[359px]:gap-1.5 max-[359px]:px-2.5"
         >
           <span
             aria-hidden
-            className="h-6 w-6 shrink-0 rounded-md bg-cover bg-center"
-            style={{ backgroundImage: "url(/icons/icon-192.png)" }}
-          />
-          <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[#1E293B] max-[359px]:text-[12px]">
+            className="theme-t flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--ib-accent)] text-[13px] font-extrabold leading-none text-[var(--ib-accent-fg)]"
+          >
+            B
+          </span>
+          <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[var(--ib-text)] max-[359px]:text-[12px]">
             홈 화면에 바로가기 추가
           </p>
           <button
             type="button"
             onClick={dismissInstallBar}
-            className="flex min-h-[44px] shrink-0 cursor-pointer items-center whitespace-nowrap px-[10px] text-[13px] font-medium text-[#64748B] active:opacity-70 max-[359px]:px-1.5 max-[359px]:text-[12px]"
+            className="flex min-h-[44px] shrink-0 cursor-pointer items-center whitespace-nowrap px-[10px] text-[13px] font-medium text-[var(--ib-sub)] active:opacity-70 max-[359px]:px-1.5 max-[359px]:text-[12px]"
           >
             닫기
           </button>
@@ -57,7 +58,7 @@ export default function InstallBar() {
             onClick={onInstall}
             className="flex min-h-[44px] shrink-0 cursor-pointer items-center active:opacity-80"
           >
-            <span className="flex h-8 items-center whitespace-nowrap rounded-full bg-[#1D4ED8] px-[14px] text-[13px] font-semibold leading-none text-white max-[359px]:px-3 max-[359px]:text-[12px]">
+            <span className="flex h-8 items-center whitespace-nowrap theme-t rounded-full bg-[var(--ib-accent)] px-[14px] text-[13px] font-semibold leading-none text-[var(--ib-accent-fg)] max-[359px]:px-3 max-[359px]:text-[12px]">
               추가
             </span>
           </button>

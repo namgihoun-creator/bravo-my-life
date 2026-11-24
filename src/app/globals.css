@@ -224,6 +224,24 @@ body {
   box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.25);
 }
 
+/* ── 홈 화면 설치 배너: 현재 모드(data-mode)와 색을 맞춘다 ── */
+.install-bar {
+  --ib-bg: #eff6ff;
+  --ib-line: #dbeafe;
+  --ib-text: #1e293b;
+  --ib-sub: #64748b;
+  --ib-accent: #1d4ed8;
+  --ib-accent-fg: #ffffff;
+}
+:root[data-mode="nopo"] .install-bar {
+  --ib-bg: var(--tag-bg);
+  --ib-line: var(--border);
+  --ib-text: var(--text);
+  --ib-sub: var(--text-muted);
+  --ib-accent: var(--primary);
+  --ib-accent-fg: #ffffff;
+}
+
 /* ── 노포 업력 3단계 뱃지 (DESIGN.md §6-1) ── */
 .age-badge {
   border: 1px solid transparent;
