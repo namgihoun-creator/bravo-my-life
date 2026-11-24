@@ -1473,6 +1473,35 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const places = useMemo(() => rawPlaces, [placesKey]);
 
+  // 결과 요약 줄 문구(숫자 앞부분). 기준 위치·필터·검색어에 따라 맥락을 붙인다. 목록은 항상 거리순이라 뒤에 '· 가까운 순'을 붙인다.
+  const noun = mode === "nopo" ? "찐노포" : "생존 시설";
+  const areaName =
+    loc.kind === "pending"
+      ? ""
+      : loc.kind === "gps"
+        ? "내"
+        : loc.name === "지도 현위치"
+          ? "지도에서 고른 위치"
+          : loc.name.replace(/\s*인근$/, "");
+  const chipLabel = FILTERS[mode].find((f) => f.key === activeFilter)?.label ?? "";
+  const summaryPrefix = anchor
+    ? `${anchor.name} 주변 공영주차장`
+    : q
+      ? `‘${q}’ 검색 결과`
+      : openActive
+        ? mode === "nopo"
+          ? "지금 영업 중인 찐노포"
+          : "지금 이용 가능한 생존 시설"
+        : activeFilter === "fav"
+          ? `찜한 ${noun}`
+          : activeFilter === "visited"
+            ? `다녀온 ${noun}`
+            : activeFilter !== "all" && chipLabel
+              ? /^y\d+$/.test(activeFilter)
+                ? `업력 ${chipLabel}`
+                : chipLabel
+              : `${areaName ? `${areaName} 주변` : "주변"} ${noun}`;
+
   // 목록은 거리순 상위 30곳만 먼저 그리고 '더 보기'로 30곳씩 늘린다. 조회 조건이 바뀌면 key 가 달라져 자동으로 30곳으로 돌아간다.
   // (지도 핀·건수는 전체 매칭 기준: places/rawPlaces 그대로)
   const listKey = `${mode}|${filter}|${openActive}|${q}|${view}|${anchor?.id ?? ""}|${loc.kind === "pending" ? "p" : `${loc.lat},${loc.lng}`}`;
@@ -1741,8 +1770,15 @@ export default function Home() {
         )}
         {view === "list" && !loading && !error && rawPlaces.length > 0 && (
           <div className="flex items-center justify-between gap-2">
-            <p className="tnum min-w-0 text-label font-semibold text-muted" role="status">
-              {anchor ? `${anchor.name} 주변` : "주변"} {rawPlaces.length}곳
+            {/* 문구 앞부분만 말줄임(긴 동네·검색어 대비), 숫자는 항상 보이고 정렬 기준은 360px 미만에서 숨겨 토글과 겹치거나 꺾이지 않게 한다 */}
+            <p className="tnum flex min-w-0 items-baseline gap-1 text-label font-semibold text-ink" role="status">
+              <span className="min-w-0 truncate">{summaryPrefix}</span>
+              <span className="shrink-0 whitespace-nowrap">
+                <b className="font-bold text-primary">{rawPlaces.length}</b>곳
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-caption font-medium text-muted max-[359px]:hidden">
+                · 가까운 순
+              </span>
             </p>
             <div role="group" aria-label="목록 보기 형태" className="flex shrink-0 items-center">
               {(
