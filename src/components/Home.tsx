@@ -1512,7 +1512,7 @@ export default function Home() {
               e.preventDefault();
               searchRef.current?.blur();
             }}
-            className="mt-3 flex items-center gap-1"
+            className="mt-3 flex items-center gap-2"
           >
             <div className="relative min-w-0 flex-1">
               <input
@@ -1525,8 +1525,8 @@ export default function Home() {
                 enterKeyHint="search"
                 placeholder="가게명, 메뉴, 24시, 셀프세차 검색"
                 aria-label="빠른 키워드 검색"
-                className={`theme-t h-11 w-full min-w-0 rounded-xl border border-line bg-surface pl-3 text-[14px] text-ink placeholder:text-muted [&::-webkit-search-cancel-button]:hidden ${
-                  query ? "pr-11" : "pr-3"
+                className={`theme-t h-11 w-full min-w-0 rounded-full border border-line bg-surface pl-4 text-[14px] text-ink placeholder:text-muted focus:border-primary [&::-webkit-search-cancel-button]:hidden ${
+                  query ? "pr-11" : "pr-4"
                 }`}
               />
               {query && (
@@ -1539,7 +1539,10 @@ export default function Home() {
                   aria-label="검색어 지우기"
                   className="absolute right-0 top-0 flex h-11 w-11 cursor-pointer items-center justify-center text-muted"
                 >
-                  <X size={16} strokeWidth={2} aria-hidden />
+                  {/* 터치 영역은 44px, 보이는 건 작은 원: 바깥 `닫기`(알약)와 위계가 갈린다 */}
+                  <span className="theme-t flex h-6 w-6 items-center justify-center rounded-full bg-tag-bg text-tag-text">
+                    <X size={14} strokeWidth={2.25} aria-hidden />
+                  </span>
                 </button>
               )}
             </div>
@@ -1549,7 +1552,7 @@ export default function Home() {
                 setQuery("");
                 setSearchOpen(false);
               }}
-              className="min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap px-2 text-label font-semibold text-muted active:opacity-70"
+              className="theme-t flex h-11 min-w-[56px] shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full border border-line bg-surface px-4 text-label font-medium text-ink active:bg-tag-bg [@media(hover:hover)]:hover:bg-tag-bg"
             >
               닫기
             </button>
