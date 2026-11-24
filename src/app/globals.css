@@ -135,6 +135,65 @@ body {
   display: none;
 }
 
+/* 앱 첫 진입 스플래시: 고정 크림 + 딥 브라운(모드와 무관). html[data-splash] 일 때만 보인다 */
+.splash {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  background: #faf4e8;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 250ms ease-out;
+}
+html[data-splash] .splash {
+  display: flex;
+}
+.splash.splash-out {
+  opacity: 0;
+}
+.splash-logo {
+  display: flex;
+  height: 88px;
+  width: 88px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  background: #8a3b12;
+  color: #fff8ec;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+}
+.splash-title {
+  margin-top: 20px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #2b1a0e;
+}
+.splash-sub {
+  position: absolute;
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  left: 24px;
+  right: 24px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b5744;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash {
+    display: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

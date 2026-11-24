@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import SplashScreen from "@/components/SplashScreen";
 import ToastHost from "@/components/ToastHost";
 import { SITE_URL } from "@/lib/site";
 
@@ -60,13 +61,20 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" data-mode="survival" className="h-full">
+    <html lang="ko" data-mode="survival" className="h-full" suppressHydrationWarning>
       <head>
         {/* beforeinstallprompt 는 hydrate 전에 올 수 있어 먼저 잡아 둔다(앱 설치 버튼이 window.__bip 를 사용) */}
         <script
           dangerouslySetInnerHTML={{
             __html:
               "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__bip=e;});",
+          }}
+        />
+        {/* 스플래시: 홈(/) 첫 진입(세션당 1회)에서만 첫 페인트 전에 켠다. 저장소 접근 실패 시 띄우지 않는다 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(location.pathname==='/'&&!sessionStorage.getItem('bml_splash_shown')&&!matchMedia('(prefers-reduced-motion: reduce)').matches){sessionStorage.setItem('bml_splash_shown','1');document.documentElement.setAttribute('data-splash','1');}}catch(e){}",
           }}
         />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
@@ -76,6 +84,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full">
+        <SplashScreen />
         {children}
         <ServiceWorkerRegister />
         <ToastHost />
