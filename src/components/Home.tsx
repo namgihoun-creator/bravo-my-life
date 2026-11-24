@@ -403,7 +403,10 @@ function FilterChips({
   openOnly,
   onToggleOpen,
   liveLabels = false,
+  wrap = false,
 }: {
+  /** true 면 1줄 가로 스크롤 대신 여러 줄로 펼쳐 모든 칩을 한눈에 보여 준다(화살표·자동 스크롤 없음) */
+  wrap?: boolean;
   /** 실시간 폴백 결과(약국·주차장)를 보여 주는 중이면 '심야약국'·'공영주차장' 대신 사실대로 '약국'·'주차장' */
   liveLabels?: boolean;
   mode: Mode;
@@ -425,10 +428,11 @@ function FilterChips({
 
   // 활성 카테고리 칩이 가로 스크롤 영역 안쪽(중앙)으로 오도록 자동 스크롤
   useEffect(() => {
+    if (wrap) return;
     ref.current
       ?.querySelector<HTMLElement>('[data-filter-chip][aria-pressed="true"]')
       ?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-  }, [mode, value]);
+  }, [mode, value, wrap]);
 
   // '찜' 칩은 0건이어도 항상 보인다(발견 가능성). 나머지는 0건이면 숨긴다.
   // 생존 모드 핵심 카테고리(개방화장실·공영주차장)는 0건이어도 칩을 보여 주고, 눌렀을 때 안내 문구를 띄운다.
@@ -483,10 +487,38 @@ function FilterChips({
   }
   if (showOpenChip) items.splice(Math.min(visitedCount > 0 ? 3 : 2, items.length), 0, openChip);
 
+  if (wrap) {
+    return (
+      <div id="filter-chips-all" role="group" aria-label="카테고리 필터(전체)" className="flex flex-wrap gap-2">
+        {items}
+      </div>
+    );
+  }
   return (
     <HScroll scrollRef={ref} ariaLabel="카테고리 필터">
       {items}
     </HScroll>
+  );
+}
+
+/** 필터 칩 펼치기/접기 토글(44×44). 칩 줄과 `목록 | 지도` 토글 사이에 둔다 */
+function ChipsExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls="filter-chips-all"
+      aria-label={expanded ? "카테고리 접기" : "카테고리 모두 보기"}
+      className="theme-t flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-surface text-ink active:opacity-80"
+    >
+      <ChevronDown
+        size={18}
+        strokeWidth={2}
+        aria-hidden
+        className={`transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+      />
+    </button>
   );
 }
 
@@ -1002,6 +1034,8 @@ export default function Home() {
   const [reportOpen, setReportOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [view, setView] = useState<View>("list"); // 기본값: 목록
+  // 필터 칩 펼침: 모드가 바뀌면 자동으로 접힘(파생값이라 모드 전환 때 effect 없이 초기화된다)
+  const [chipsOpen, setChipsOpen] = useState<Mode | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null); // 지도에서 고른 핀
   const [openOnly, setOpenOnly] = useState(false); // '지금 영업 중 / 이용 가능(24시)' 필터
   const [searchOpen, setSearchOpen] = useState(false); // 빠른 키워드 검색 바 펼침
@@ -1176,6 +1210,7 @@ export default function Home() {
   // 칩은 항상 1개만 활성: 카테고리/연차/찜을 고르면 '지금 영업 중'은 꺼진다
   // 이미 활성인 칩을 한 번 더 누르면 '전체'로 돌아간다
   const changeFilter = (k: string) => {
+    setChipsOpen(null); // 펼친 상태에서 고르면 접어 목록을 바로 보여 준다
     setOpenOnly(false);
     setFilter(k === filter && k !== "all" ? "all" : k);
     setSelectedId(null);
@@ -1278,6 +1313,16 @@ export default function Home() {
     [all, mode, nowMs],
   );
   const openActive = openOnly && hasKnownHours;
+  const chipsExpanded = chipsOpen === mode;
+  // 펼친 칩이 sticky 헤더를 길게 차지하므로 아래로 스크롤하면 자동으로 접는다
+  useEffect(() => {
+    if (!chipsExpanded) return;
+    const onScroll = () => {
+      if (window.scrollY > 120) setChipsOpen(null);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [chipsExpanded]);
   const clock = openActive ? nowMs : 0; // 필터를 끄면 분 단위 시계 변화로 재계산하지 않는다
   const { counts, favCount, visitedCount, activeFilter, rawPlaces, unknownExcluded } = useMemo(() => {
     // 노포 모드는 인허가 연도로 업력이 검증된 가게(10년+)와 유저 제보만 노출한다
@@ -1393,6 +1438,25 @@ export default function Home() {
   const hubBanner = hubBannerInfo?.hub ?? null;
   // 가장 가까운 거점이 30km 밖이면 '데이터가 적은 동네'가 아니라 '아직 지원하지 않는 지역'으로 안내한다
   const unsupportedArea = !!hubBannerInfo && hubBannerInfo.m >= UNSUPPORTED_HUB_M;
+
+  const chipProps = {
+    mode,
+    value: openActive ? "open-now" : activeFilter,
+    counts,
+    favCount,
+    visitedCount,
+    onChange: changeFilter,
+    showOpenChip: hasKnownHours,
+    liveLabels: liveShown,
+    openOnly: openActive,
+    onToggleOpen: () => {
+      // '지금 영업 중'을 켜면 전체 기준으로 보며 다른 칩의 활성 표시는 꺼진다
+      setChipsOpen(null);
+      if (!openActive) setFilter("all");
+      setOpenOnly(!openActive);
+      setSelectedId(null);
+    },
+  };
 
   return (
     <>
@@ -1510,25 +1574,15 @@ export default function Home() {
         )}
         <ModeTabs mode={mode} onChange={changeMode} />
         <div className="flex items-center gap-2">
-          <FilterChips
-            mode={mode}
-            value={openActive ? "open-now" : activeFilter}
-            counts={counts}
-            favCount={favCount}
-            visitedCount={visitedCount}
-            onChange={changeFilter}
-            showOpenChip={hasKnownHours}
-            liveLabels={liveShown}
-            openOnly={openActive}
-            onToggleOpen={() => {
-              // '지금 영업 중'을 켜면 전체 기준으로 보며 다른 칩의 활성 표시는 꺼진다
-              if (!openActive) setFilter("all");
-              setOpenOnly(!openActive);
-              setSelectedId(null);
-            }}
-          />
+          {chipsExpanded ? (
+            <p className="min-w-0 flex-1 truncate pl-1 text-label font-bold text-ink">카테고리 전체</p>
+          ) : (
+            <FilterChips {...chipProps} />
+          )}
+          <ChipsExpandToggle expanded={chipsExpanded} onToggle={() => setChipsOpen(chipsExpanded ? null : mode)} />
           <ViewToggle view={view} onChange={changeView} />
         </div>
+        {chipsExpanded && <FilterChips {...chipProps} wrap />}
         {anchor && (
           <div
             role="status"
