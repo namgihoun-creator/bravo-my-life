@@ -9,6 +9,25 @@ const OG_TITLE = "Bravo My Life — 내 주변 찐노포 & 생활 편의 탐색"
 const OG_DESC =
   "30년 넘은 찐노포 맛집부터 급할 때 찾는 개방화장실·공영주차장·세탁방까지, 내 주변 알짜 장소를 한눈에 찾고 길찾기까지 한 번에.";
 
+// iOS 홈 화면 실행 시작 화면: 기기 CSS 해상도·배율별 이미지(scripts/make_icons.py 가 public/splash 에 생성)
+const IOS_SPLASH: [number, number, number][] = [
+  [375, 667, 2],
+  [375, 812, 3],
+  [414, 736, 3],
+  [414, 896, 2],
+  [414, 896, 3],
+  [390, 844, 3],
+  [393, 852, 3],
+  [402, 874, 3],
+  [428, 926, 3],
+  [430, 932, 3],
+  [440, 956, 3],
+];
+const startupImage = IOS_SPLASH.map(([w, h, r]) => ({
+  url: `/splash/apple-splash-${w * r}x${h * r}.png`,
+  media: `(device-width: ${w}px) and (device-height: ${h}px) and (-webkit-device-pixel-ratio: ${r}) and (orientation: portrait)`,
+}));
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: OG_TITLE,
@@ -35,6 +54,7 @@ export const metadata: Metadata = {
     capable: true,
     title: "브라보 마이 라이프",
     statusBarStyle: "default",
+    startupImage,
   },
   formatDetection: { telephone: false },
   // 검색엔진 소유권 인증(공개 토큰). 구글 서치콘솔·네이버 서치어드바이저
