@@ -13,6 +13,7 @@ import {
   MapPin,
   Search,
   X,
+  LayoutGrid,
   List,
   Map as MapIcon,
   Phone,
@@ -65,6 +66,8 @@ import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import { lastPlace } from "@/lib/recentPlaces";
 import AreaRequestButton from "@/components/AreaRequestButton";
+import CompactPlaceRow from "@/components/CompactPlaceRow";
+import { setListStyle, useListStyle } from "@/lib/listStyle";
 import IntroCard, { dismissIntro } from "@/components/IntroCard";
 import { LIVE_LABEL, LIVE_NOTICE, isLive, liveKakaoUrl, livePlacesFrom, snapLive, type LiveCategory } from "@/lib/livePlaces";
 import ReportSheet from "./ReportSheet";
@@ -1097,6 +1100,8 @@ export default function Home() {
   // 첫 화면 모드: 마지막으로 고른 탭 기억 + 새 세션 심야(23~05시)만 생존 모드(src/lib/startMode.ts).
   // 서버 렌더·하이드레이션은 survival, 마운트 후 저장된 시작 모드로 맞춘다. 사용자가 탭을 누르면 그 값이 우선한다.
   const startMode = useSyncExternalStore(noopSubscribe, resolveStartMode, serverStartMode);
+  const listStyle = useListStyle(); // 카드형/리스트형(localStorage, 서버·첫 렌더는 card)
+  const [expandedRows, setExpandedRows] = useState<string[]>([]); // 리스트형에서 전체 카드로 펼친 행(상세 페이지가 없는 생존·실시간 폴백)
   const [pickedMode, setMode] = useState<Mode | null>(null);
   const mode: Mode = pickedMode ?? startMode;
   const [filter, setFilter] = useState("all");
@@ -1734,6 +1739,41 @@ export default function Home() {
             주변 2km 안에 장소가 적어 5km까지 넓혀 보여드려요
           </p>
         )}
+        {view === "list" && !loading && !error && rawPlaces.length > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="tnum min-w-0 text-label font-semibold text-muted" role="status">
+              {anchor ? `${anchor.name} 주변` : "주변"} {rawPlaces.length}곳
+            </p>
+            <div role="group" aria-label="목록 보기 형태" className="flex shrink-0 items-center">
+              {(
+                [
+                  { key: "card", label: "카드형", Icon: LayoutGrid },
+                  { key: "compact", label: "리스트형", Icon: List },
+                ] as const
+              ).map(({ key, label, Icon }) => {
+                const on = listStyle === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setListStyle(key)}
+                    aria-pressed={on}
+                    aria-label={`${label} 보기`}
+                    className={`theme-t flex h-11 w-11 cursor-pointer items-center justify-center rounded-full ${
+                      on ? "text-primary" : "text-muted"
+                    }`}
+                  >
+                    <span
+                      className={`theme-t flex h-8 w-8 items-center justify-center rounded-lg ${on ? "bg-tag-bg" : ""}`}
+                    >
+                      <Icon size={18} aria-hidden />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {loading && activeFilter !== "fav" && activeFilter !== "visited" ? (
           view === "map" ? (
             <div className="h-[calc(100dvh-250px)] min-h-[380px] animate-pulse rounded-2xl bg-tag-bg" aria-hidden />
@@ -1825,20 +1865,41 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          rawPlaces.slice(0, shown).map((p) => (
-            <PlaceCard
-              key={p.id}
-              place={p}
-              all={all}
-              highlighted={p.id === highlightId}
-              onShowParking={showParking}
-              onAnchorParking={startAnchor}
-              anchorName={anchor?.name}
-              nowMs={nowMs}
-              origin={origin}
-              onReportIssue={setIssueTarget}
-            />
-          ))
+          rawPlaces.slice(0, shown).map((p) =>
+            listStyle === "compact" && !expandedRows.includes(p.id) ? (
+              <CompactPlaceRow
+                key={p.id}
+                place={p}
+                nowMs={nowMs}
+                origin={origin}
+                highlighted={p.id === highlightId}
+                onExpand={(pl) => setExpandedRows((prev) => [...prev, pl.id])}
+              />
+            ) : (
+              <div key={p.id} className="space-y-2">
+                <PlaceCard
+                  place={p}
+                  all={all}
+                  highlighted={p.id === highlightId}
+                  onShowParking={showParking}
+                  onAnchorParking={startAnchor}
+                  anchorName={anchor?.name}
+                  nowMs={nowMs}
+                  origin={origin}
+                  onReportIssue={setIssueTarget}
+                />
+                {listStyle === "compact" && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRows((prev) => prev.filter((id) => id !== p.id))}
+                    className="theme-t flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-xl border border-line bg-surface text-label font-semibold text-muted active:opacity-80"
+                  >
+                    리스트로 접기
+                  </button>
+                )}
+              </div>
+            ),
+          )
         )}
         {view === "list" && !loading && !error && remaining > 0 && (
           <button
