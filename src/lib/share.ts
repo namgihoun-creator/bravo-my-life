@@ -7,7 +7,8 @@ export const SHARE_COPIED_MESSAGE = "가게 정보와 지도 링크를 복사했
 
 /**
  * 공유 텍스트:
- * [브라보 마이 라이프] {가게명} ({업력 N년} · {음식 업종})
+ * [업력 N년 노포]   (업력이 있을 때만)
+ * [브라보 마이 라이프] {가게명} ({음식 업종})
  * 📍 {주소}
  * 🗺️ 지도 보기: https://map.kakao.com/link/map/{name},{lat},{lng}
  * 🔗 상세 보기: {SITE_URL}/place/{id}   (노포만 — 미리보기(OG)가 가게 이름·업력으로 뜬다)
@@ -15,12 +16,13 @@ export const SHARE_COPIED_MESSAGE = "가게 정보와 지도 링크를 복사했
 export function buildShareText(p: Place): string {
   const parts: string[] = [];
   const years = p.mode === "nopo" ? yearsInBusiness(p) : null;
-  if (years !== null) parts.push(`업력 ${years}년`);
-  else if (p.badge) parts.push(p.badge);
+  if (years === null && p.badge) parts.push(p.badge);
   const food = foodLabel(p);
   if (food) parts.push(food);
 
-  const lines = [`[브라보 마이 라이프] ${p.name}${parts.length ? ` (${parts.join(" · ")})` : ""}`];
+  // 업력이 있으면 받는 사람이 바로 알아보도록 맨 앞에 한 줄 맥락을 붙인다(괄호에서는 중복이라 뺀다)
+  const lines = years !== null ? [`[업력 ${years}년 노포]`] : [];
+  lines.push(`[브라보 마이 라이프] ${p.name}${parts.length ? ` (${parts.join(" · ")})` : ""}`);
   if (p.address) lines.push(`📍 ${p.address}`);
   lines.push(`🗺️ 지도 보기: https://map.kakao.com/link/map/${encodeURIComponent(p.name)},${p.lat},${p.lng}`);
   if (p.mode === "nopo") lines.push(`🔗 상세 보기: ${placeUrl(p.id)}`);

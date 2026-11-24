@@ -7,6 +7,7 @@ import {
   HeartHandshake,
   TriangleAlert,
   ChevronRight,
+  Ellipsis,
   Heart,
   LocateFixed,
   MapPin,
@@ -14,6 +15,7 @@ import {
   X,
   List,
   Map as MapIcon,
+  Phone,
   Plus,
   Share2,
   Siren,
@@ -52,6 +54,7 @@ import Link from "next/link";
 import AddressLine from "@/components/AddressLine";
 import Footer from "@/components/Footer";
 import { getOpenState } from "@/lib/openStatus";
+import { telHref } from "@/lib/navUrls";
 import { sharePlace } from "@/lib/share";
 import { readNearby, saveNearby } from "@/lib/placeCache";
 import { getSupabase } from "@/lib/supabase";
@@ -631,10 +634,86 @@ function PlaceCard({
   const fav = !!useFavorites()[place.id];
   const visitedEntry = useVisited()[place.id];
   const [editing, setEditing] = useState(false); // 한 줄 메모 입력·수정 영역
+  // 노포 카드는 핵심 3버튼(길찾기·전화·찜)만 두고 나머지는 ⋯ 더보기 안에 접는다(기본 접힘, 카드마다 매번 접힌 채 시작)
+  const lean = place.mode === "nopo" && !liveCard;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tel = lean ? telHref(place.phone) : null; // 목록 RPC(009 이후)가 유선·대표번호만 내려준다. 없으면 버튼 숨김
   const [draft, setDraft] = useState("");
   const info = fieldInfo(place);
   const hasField = info.closedDays.length > 0 || !!info.hours || !!info.breakTime;
   const statusRow = !!open?.status || !!open?.reason;
+
+  const extraRow = (
+      <div className={`${lean ? "mt-2" : "mt-3"} flex flex-wrap gap-2`}>
+        {chips.map((c) => (
+          <FeedbackChip
+            key={c.key}
+            placeId={place.id}
+            chipKey={c.key}
+            icon={c.icon}
+            label={c.label}
+            count={feedbackCount(place, c.key)}
+          />
+        ))}
+        <button
+          onClick={() => {
+            if (visitedEntry) {
+              removeVisited(place.id);
+              void pushVisited(place.id, false, null);
+              setEditing(false);
+              showToast("다녀옴을 취소했어요.");
+            } else {
+              setVisited(place, null);
+              void pushVisited(place.id, true, null);
+              setDraft("");
+              setEditing(true); // 체크인과 함께 한 줄 메모 입력창을 연다
+            }
+          }}
+          aria-pressed={!!visitedEntry}
+          className={`theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-caption font-semibold active:opacity-80 ${
+            visitedEntry ? "border-success bg-surface text-success" : "border-line bg-surface text-ink"
+          }`}
+        >
+          <CategoryIcon k="visited" fill={!!visitedEntry} />
+          다녀옴
+        </button>
+        {lean && (
+          <button
+            onClick={() => sharePlace(place)}
+            aria-label={`${place.name} 공유하기`}
+            className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-ink active:opacity-80"
+          >
+            <Share2 size={14} strokeWidth={2} aria-hidden />
+            공유
+          </button>
+        )}
+        <button
+          onClick={() => onReportIssue(place)}
+          className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-muted active:opacity-80"
+        >
+          <TriangleAlert size={14} strokeWidth={2} aria-hidden />
+          정보 오류 제보
+        </button>
+        {place.mode === "nopo" && (
+          <button
+            onClick={() => onAnchorParking(place)}
+            className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-ink active:opacity-80"
+          >
+            <CategoryIcon k="parking" />
+            주변 주차장
+          </button>
+        )}
+      </div>
+  );
+  const nearBtn = near && (
+        <button
+          onClick={() => onShowParking(near.parking.id)}
+          className="theme-t mt-2 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-transparent px-3 text-label font-semibold text-primary active:scale-[0.98]"
+        >
+          <CategoryIcon k="parking" size={16} />
+          인근 공영주차장 보기 · 도보 {near.walkMin}분
+        </button>
+  );
 
   return (
     <article
@@ -808,58 +887,7 @@ function PlaceCard({
         </div>
       )}
 
-      {!liveCard && (
-      <div className="mt-3 flex flex-wrap gap-2">
-        {chips.map((c) => (
-          <FeedbackChip
-            key={c.key}
-            placeId={place.id}
-            chipKey={c.key}
-            icon={c.icon}
-            label={c.label}
-            count={feedbackCount(place, c.key)}
-          />
-        ))}
-        <button
-          onClick={() => {
-            if (visitedEntry) {
-              removeVisited(place.id);
-              void pushVisited(place.id, false, null);
-              setEditing(false);
-              showToast("다녀옴을 취소했어요.");
-            } else {
-              setVisited(place, null);
-              void pushVisited(place.id, true, null);
-              setDraft("");
-              setEditing(true); // 체크인과 함께 한 줄 메모 입력창을 연다
-            }
-          }}
-          aria-pressed={!!visitedEntry}
-          className={`theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-caption font-semibold active:opacity-80 ${
-            visitedEntry ? "border-success bg-surface text-success" : "border-line bg-surface text-ink"
-          }`}
-        >
-          <CategoryIcon k="visited" fill={!!visitedEntry} />
-          다녀옴
-        </button>
-        <button
-          onClick={() => onReportIssue(place)}
-          className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-muted active:opacity-80"
-        >
-          <TriangleAlert size={14} strokeWidth={2} aria-hidden />
-          정보 오류 제보
-        </button>
-        {place.mode === "nopo" && (
-          <button
-            onClick={() => onAnchorParking(place)}
-            className="theme-t inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-caption font-semibold text-ink active:opacity-80"
-          >
-            <CategoryIcon k="parking" />
-            주변 주차장
-          </button>
-        )}
-      </div>
-      )}
+      {!liveCard && !lean && extraRow}
 
       {visitedEntry &&
         (editing ? (
@@ -952,14 +980,26 @@ function PlaceCard({
           )
         ) : (
           <>
-        <button
-          onClick={() => sharePlace(place)}
-          aria-label={`${place.name} 공유하기`}
-          className="theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-line bg-surface text-ink active:opacity-80"
-        >
-          <Share2 size={16} aria-hidden />
-          <span className="text-caption font-semibold">공유</span>
-        </button>
+        {tel && (
+          <a
+            href={tel}
+            aria-label={`${place.name} 전화하기`}
+            className="theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-line bg-surface text-ink active:opacity-80"
+          >
+            <Phone size={16} aria-hidden />
+            <span className="text-caption font-semibold">전화</span>
+          </a>
+        )}
+        {!lean && (
+          <button
+            onClick={() => sharePlace(place)}
+            aria-label={`${place.name} 공유하기`}
+            className="theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-line bg-surface text-ink active:opacity-80"
+          >
+            <Share2 size={16} aria-hidden />
+            <span className="text-caption font-semibold">공유</span>
+          </button>
+        )}
         <button
           onClick={() => {
             const on = toggleFavorite(place);
@@ -974,19 +1014,46 @@ function PlaceCard({
           <Heart size={16} aria-hidden fill={fav ? "currentColor" : "none"} />
           <span className="text-caption font-semibold">찜</span>
         </button>
+        {lean && (
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+            aria-controls={`more-${place.id}`}
+            aria-label={moreOpen ? `${place.name} 부가 기능 접기` : `${place.name} 부가 기능 더보기`}
+            className={`theme-t flex h-12 w-11 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border bg-surface active:opacity-80 max-[389px]:hidden ${
+              moreOpen ? "border-primary text-primary" : "border-line text-ink"
+            }`}
+          >
+            <Ellipsis size={16} aria-hidden />
+            <span className="text-caption font-semibold">{moreOpen ? "접기" : "더보기"}</span>
+          </button>
+        )}
           </>
         )}
       </div>
-
-      {near && (
+      {lean && (
+        // 390px 미만(폴드 커버·작은 폰)에서는 4버튼이 길찾기 라벨을 자르므로 더보기 토글만 아래 한 줄로 내린다
         <button
-          onClick={() => onShowParking(near.parking.id)}
-          className="theme-t mt-2 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-transparent px-3 text-label font-semibold text-primary active:scale-[0.98]"
+          onClick={() => setMoreOpen((v) => !v)}
+          aria-expanded={moreOpen}
+          aria-controls={`more-${place.id}`}
+          aria-label={moreOpen ? `${place.name} 부가 기능 접기` : `${place.name} 부가 기능 더보기`}
+          className={`theme-t mt-2 hidden min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border bg-surface text-label font-semibold active:opacity-80 max-[389px]:flex ${
+            moreOpen ? "border-primary text-primary" : "border-line text-ink"
+          }`}
         >
-          <CategoryIcon k="parking" size={16} />
-          인근 공영주차장 보기 · 도보 {near.walkMin}분
+          <Ellipsis size={16} aria-hidden />
+          {moreOpen ? "접기" : "더보기"}
         </button>
       )}
+      {lean && moreOpen && (
+        <div id={`more-${place.id}`}>
+          {extraRow}
+          {nearBtn}
+        </div>
+      )}
+
+      {!lean && nearBtn}
       {syncedLabel(place) && (
         <p className="tnum mt-2 text-right text-caption text-muted" title="데이터를 마지막으로 확인한 달">
           {syncedLabel(place)}
