@@ -102,4 +102,4 @@
 
 - **폐업 의심 경고:** `reported_issue==="closed"`는 목록 카드·상세 페이지 모두 채움 배지 `폐업 의심 · 방문 전 전화로 확인하세요`(amber-700 배경+흰 글씨, 14px 아이콘), `info_changed`는 외곽선 배지 `정보 변경 제보됨 · 방문 전 확인하세요`로 구분한다.
 
-- **필터 칩 펼치기/접기:** 칩 줄과 `목록 | 지도` 토글 사이의 `ChipsExpandToggle`(44×44, `ChevronDown`, `aria-expanded`·`aria-controls="filter-chips-all"`)이 칩을 1줄 가로 스크롤(`HScroll`, 기본) ↔ `flex-wrap` 여러 줄(`FilterChips wrap`, 줄 전체 폭·화살표 없음)로 바꾼다. 상태 `chipsOpen`은 모드 값을 담아(`chipsOpen === mode`) 모드 전환 때 effect 없이 접힘으로 돌아간다. 칩을 고르거나 `지금 영업 중`을 누르거나 120px 넘게 스크롤하면 자동으로 접는다(sticky 헤더가 길어지는 것 방지).
+- **필터 칩 펼치기/접기:** 칩 줄과 `목록 | 지도` 토글 사이의 `ChipsExpandToggle`(44×44, `ChevronDown`, `aria-expanded`·`aria-controls="filter-chips-all"`)이 칩을 1줄 가로 스크롤(`HScroll`, 기본) ↔ 여러 줄(`FilterChips wrap`, 화살표 없음)로 바꾼다. 펼치면 제목 없이 첫 줄부터 칩이 놓이고 `[접기 + 목록|지도]`는 `float-right`(아래 여백 없음: 칩 한 줄 높이 52px 안에 둬야 둘째 줄이 전체 폭을 쓴다), 칩은 block 안의 `inline-flex`(`mb-2 mr-2 align-top`)로 float을 피해 흐른다. 상태 `chipsOpen`은 모드 값을 담아(`chipsOpen === mode`) 모드 전환 때 effect 없이 접힘으로 돌아간다. 칩을 고르거나 `지금 영업 중`을 누르거나 120px 넘게 스크롤하면 자동으로 접는다(sticky 헤더가 길어지는 것 방지).

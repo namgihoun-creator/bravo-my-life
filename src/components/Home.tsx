@@ -449,6 +449,8 @@ function FilterChips({
       aria-pressed={active}
       onClick={onClick}
       className={`theme-t inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-label font-semibold ${
+        wrap ? "mb-2 mr-2 align-top" : ""
+      } ${
         active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
       }`}
     >
@@ -489,7 +491,8 @@ function FilterChips({
 
   if (wrap) {
     return (
-      <div id="filter-chips-all" role="group" aria-label="카테고리 필터(전체)" className="flex flex-wrap gap-2">
+      // block 안의 inline-flex 칩: 앞선 float(접기·보기 전환)을 피해 첫 줄을 채우고 둘째 줄부터는 전체 폭을 쓴다
+      <div id="filter-chips-all" role="group" aria-label="카테고리 필터(전체)">
         {items}
       </div>
     );
@@ -1573,16 +1576,21 @@ export default function Home() {
           </div>
         )}
         <ModeTabs mode={mode} onChange={changeMode} />
-        <div className="flex items-center gap-2">
-          {chipsExpanded ? (
-            <p className="min-w-0 flex-1 truncate pl-1 text-label font-bold text-ink">카테고리 전체</p>
-          ) : (
+        {chipsExpanded ? (
+          <div className="flow-root">
+            <div className="float-right ml-2 flex items-center gap-2">
+              <ChipsExpandToggle expanded onToggle={() => setChipsOpen(null)} />
+              <ViewToggle view={view} onChange={changeView} />
+            </div>
+            <FilterChips {...chipProps} wrap />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
             <FilterChips {...chipProps} />
-          )}
-          <ChipsExpandToggle expanded={chipsExpanded} onToggle={() => setChipsOpen(chipsExpanded ? null : mode)} />
-          <ViewToggle view={view} onChange={changeView} />
-        </div>
-        {chipsExpanded && <FilterChips {...chipProps} wrap />}
+            <ChipsExpandToggle expanded={false} onToggle={() => setChipsOpen(mode)} />
+            <ViewToggle view={view} onChange={changeView} />
+          </div>
+        )}
         {anchor && (
           <div
             role="status"
