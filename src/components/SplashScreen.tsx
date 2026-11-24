@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-/** 표시 700ms = 정지 450ms + 페이드아웃 250ms. 긴급 상황 사용자를 오래 막지 않는다. */
-const HOLD_MS = 450;
-const FADE_MS = 250;
+/** 표시 1,000ms = 정지 700ms + 페이드아웃 300ms. 긴급 상황 사용자를 오래 막지 않는다. */
+const HOLD_MS = 700;
+const FADE_MS = 300;
 
 /**
  * 앱 첫 진입 브랜드 스플래시. 노출 여부는 layout `<head>` 인라인 스크립트가 첫 페인트 전에 정한다
@@ -36,9 +36,28 @@ export default function SplashScreen() {
 
   return (
     <div ref={ref} className="splash" aria-hidden>
-      <div className="splash-logo">B</div>
-      <p className="splash-title">Bravo My Life</p>
-      <p className="splash-sub">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
+      <div className="splash-inner">
+        <div className="splash-brand">
+          <div className="splash-logo">B</div>
+          <span className="splash-label">BRAVO MY LIFE</span>
+        </div>
+        <h1 className="splash-head">
+          지금 필요한 <em>생존</em>부터
+          <br />
+          세월이 증명한 <em>찐노포</em>까지.
+        </h1>
+        <p className="splash-desc">광고 없이 발품과 데이터로 검증한 내 주변 진짜 동네 지도</p>
+        <div className="splash-caps">
+          <span className="splash-cap">24시 긴급 생존 인프라</span>
+          <span className="splash-cap">업력 10년+ 검증 노포</span>
+        </div>
+      </div>
+      <div className="splash-foot">
+        <div className="splash-track">
+          <div className="splash-bar" />
+        </div>
+        <p className="splash-sub">내 손안의 동네 생존 &amp; 찐노포 가이드</p>
+      </div>
     </div>
   );
 }

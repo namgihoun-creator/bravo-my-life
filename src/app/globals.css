@@ -135,7 +135,7 @@ body {
   display: none;
 }
 
-/* 앱 첫 진입 스플래시: 고정 크림 + 딥 브라운(모드와 무관). html[data-splash] 일 때만 보인다 */
+/* 앱 첫 진입 스플래시(에디토리얼): 고정 크림 + 앰버 글로우 + 딥 브라운(모드와 무관). html[data-splash] 일 때만 보인다 */
 .splash {
   display: none;
   position: fixed;
@@ -143,13 +143,15 @@ body {
   z-index: 9999;
   height: 100dvh;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  padding: 0 24px;
-  background: #faf4e8;
+  padding: 0 28px;
+  background:
+    radial-gradient(70% 55% at 100% 0%, rgba(200, 120, 60, 0.28), transparent 70%),
+    radial-gradient(70% 55% at 0% 100%, rgba(176, 82, 38, 0.22), transparent 70%),
+    #faf4e8;
   pointer-events: none;
   opacity: 1;
-  transition: opacity 250ms ease-out;
+  transition: opacity 300ms ease-out;
 }
 html[data-splash] .splash {
   display: flex;
@@ -157,33 +159,111 @@ html[data-splash] .splash {
 .splash.splash-out {
   opacity: 0;
 }
+.splash-inner {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.splash-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .splash-logo {
   display: flex;
-  height: 88px;
-  width: 88px;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 24px;
+  border-radius: 10px;
   background: #8a3b12;
   color: #fff8ec;
-  font-size: 48px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1;
 }
-.splash-title {
-  margin-top: 20px;
-  font-size: 24px;
+.splash-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #6e3410;
+}
+.splash-head {
+  margin-top: 28px;
+  font-size: 28px;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
   color: #2b1a0e;
+  word-break: keep-all;
+}
+@media (max-width: 359px) {
+  .splash-head {
+    font-size: 24px;
+  }
+}
+.splash-head em {
+  font-style: normal;
+  color: #8a3b12;
+}
+.splash-desc {
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #6b5744;
+  word-break: keep-all;
+}
+.splash-caps {
+  margin-top: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.splash-cap {
+  border: 1px solid #e6d9c0;
+  border-radius: 9999px;
+  background: rgba(255, 253, 247, 0.7);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6e3410;
+  white-space: nowrap;
+}
+.splash-foot {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: calc(36px + env(safe-area-inset-bottom));
+  max-width: 420px;
+  margin: 0 auto;
+}
+.splash-track {
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(138, 59, 18, 0.15);
+}
+.splash-bar {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  transform: scaleX(0);
+  background: #8a3b12;
+}
+html[data-splash] .splash-bar {
+  animation: splash-fill 900ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+}
+@keyframes splash-fill {
+  to {
+    transform: scaleX(1);
+  }
 }
 .splash-sub {
-  position: absolute;
-  bottom: calc(40px + env(safe-area-inset-bottom));
-  left: 24px;
-  right: 24px;
+  margin-top: 12px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #6b5744;
   overflow-wrap: anywhere;
