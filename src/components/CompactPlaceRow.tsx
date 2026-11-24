@@ -18,7 +18,7 @@ const distText = (m: number) => {
 
 /** 고스트 2단(아이콘 + 라벨): 배경·테두리 상자 없이 좌측 세로 구분선만 둔다. primary 토큰이라 생존=블루, 노포=브라운 */
 const navPill =
-  "theme-t flex min-h-[44px] w-12 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 self-stretch whitespace-nowrap rounded-r-xl border-l border-line bg-transparent text-primary active:bg-tag-bg";
+  "theme-t flex min-h-[44px] w-12 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 relative self-stretch whitespace-nowrap rounded-r-xl bg-transparent text-primary before:absolute before:bottom-3 before:left-0 before:top-3 before:w-px before:bg-line before:content-[''] active:bg-tag-bg";
 
 /**
  * 컴팩트 리스트 한 줄(약 76~84px). 한 화면에 6~8곳이 보이게 이름·핵심 뱃지·업종·거리·주소만 둔다.
