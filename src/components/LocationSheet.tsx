@@ -1,5 +1,6 @@
 "use client";
 
+import FeedbackButton from "@/components/FeedbackSheet";
 import { useModalHistory } from "@/lib/useModalHistory";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed, MapPin, Search, X } from "lucide-react";
@@ -231,6 +232,10 @@ export default function LocationSheet({
               ))}
             </div>
           )}
+          <FeedbackButton
+            withIcon
+            className="theme-t mt-4 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-label font-semibold text-ink active:opacity-80"
+          />
         </div>
       </div>
     </div>

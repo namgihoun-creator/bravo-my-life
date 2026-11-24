@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FeedbackButton from "@/components/FeedbackSheet";
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
 
@@ -26,6 +27,8 @@ export default function Footer() {
       </p>
       <div className="tnum mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted md:mt-0 md:flex-nowrap md:justify-end md:gap-x-1.5 md:whitespace-nowrap">
         <span className="whitespace-nowrap">Created by NamGiHoun</span>
+        <Dot />
+        <FeedbackButton className={`${linkCls} cursor-pointer`} />
         <Dot />
         <Link href="/privacy" className={linkCls}>
           개인정보 처리방침

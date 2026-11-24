@@ -62,6 +62,7 @@ import InstallBar from "@/components/InstallApp";
 import LocationSheet, { type PickedLocation } from "./LocationSheet";
 import { lastPlace } from "@/lib/recentPlaces";
 import AreaRequestButton from "@/components/AreaRequestButton";
+import IntroCard, { dismissIntro } from "@/components/IntroCard";
 import { LIVE_LABEL, LIVE_NOTICE, isLive, liveKakaoUrl, livePlacesFrom, snapLive, type LiveCategory } from "@/lib/livePlaces";
 import ReportSheet from "./ReportSheet";
 import IssueReportSheet from "./IssueReportSheet";
@@ -1203,6 +1204,7 @@ export default function Home() {
   };
 
   const changeMode = (m: Mode) => {
+    dismissIntro(); // 첫 접속 안내 카드는 모드 탭을 누르면 닫히고 다시 뜨지 않는다
     rememberMode(m); // 사용자가 직접 고른 탭만 기억한다(심야 자동 전환·주차 연결은 저장 안 함)
     setAnchor(null);
     setMode(m);
@@ -1579,6 +1581,7 @@ export default function Home() {
           </div>
         )}
         <ModeTabs mode={mode} onChange={changeMode} />
+        <IntroCard />
         {chipsExpanded ? (
           <div className="flow-root">
             <div className="float-right ml-2 flex items-center gap-2">
