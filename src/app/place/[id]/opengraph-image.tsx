@@ -14,10 +14,9 @@ const INK = "#2b1a0e";
 const MUTED = "#6b5744";
 const PRIMARY = "#8a3b12";
 const TIER: Record<number, { bg: string; fg: string }> = {
-  1: { bg: "#f5e7cc", fg: "#6e3410" },
-  2: { bg: "#e9c98a", fg: "#4a2308" },
-  3: { bg: "#c8963e", fg: "#2b1a0e" },
-  4: { bg: "#8a3b12", fg: "#fff8ec" },
+  1: { bg: "#292524", fg: "#fef3c7" },
+  2: { bg: "#b45309", fg: "#ffffff" },
+  3: { bg: "#4c0519", fg: "#fde68a" },
 };
 
 /** satori 는 한글 글리프가 없는 기본 폰트를 쓰므로 앱과 같은 Pretendard 를 받아 쓴다(캐시). */

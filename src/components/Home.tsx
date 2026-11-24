@@ -585,7 +585,7 @@ function PlaceCard({
   const open = nowMs > 0 ? getOpenState(place, nowMs) : null;
   const isSurvival = place.mode === "survival";
   const years = place.mode === "nopo" ? yearsInBusiness(place) : null;
-  const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 4단계 뱃지 색
+  const tier = years !== null && years >= 10 ? ageTier(years) : null; // 업력 3단계 뱃지 색(실시간 폴백·유저 제보 뱃지는 해당 없음)
   const dist = Math.round(place.distance_m);
   const chips = liveCard ? [] : (FEEDBACK_CHIPS[place.category] ?? []);
   const food = place.mode === "nopo" ? foodLabel(place) : null; // 상호만 보고도 무슨 식당인지 알 수 있게

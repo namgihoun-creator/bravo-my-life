@@ -224,31 +224,28 @@ body {
   box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.25);
 }
 
-/* ── 노포 업력 4단계 뱃지 (DESIGN.md §6-1) ── */
+/* ── 노포 업력 3단계 뱃지 (DESIGN.md §6-1) ── */
 .age-badge {
   border: 1px solid transparent;
+  font-weight: 600;
 }
 .age-badge-1 {
-  /* 10~14년 */
-  background: #efe2d3;
-  color: #6b3a18;
-  border-color: #dec7ae;
+  /* 10~19년: stone-800 + amber-100 */
+  background: #292524;
+  color: #fef3c7;
+  border-color: #57534e;
 }
 .age-badge-2 {
-  /* 15~19년 */
-  background: #ebb138;
-  color: #381e04;
+  /* 20~29년: amber-700 + white */
+  background: #b45309;
+  color: #ffffff;
+  border-color: #92400e;
 }
 .age-badge-3 {
-  /* 20~29년 */
-  background: #8c2d19;
-  color: #fff8ee;
-}
-.age-badge-4 {
-  /* 30년+ */
-  background: #241f1c;
-  color: #f7c948;
-  border-color: #c99a2e;
+  /* 30년+: rose-950 + amber-200 (금테) */
+  background: #4c0519;
+  color: #fde68a;
+  border-color: #b8860b;
 }
 
 /* ── 길찾기 분할 버튼 (카카오 옐로우 / 네이버 그린 / 티맵 블루) ── */

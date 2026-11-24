@@ -289,11 +289,10 @@ export function yearsInBusiness(p: Place): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** 업력 4단계: 1=10~14년, 2=15~19년, 3=20~29년, 4=30년+ (뱃지 색 구간) */
-export function ageTier(years: number): 1 | 2 | 3 | 4 {
-  if (years >= 30) return 4;
-  if (years >= 20) return 3;
-  if (years >= 15) return 2;
+/** 업력 3단계: 1=10~19년, 2=20~29년, 3=30년+ (뱃지 색 구간. 필터 칩 10/15/20/30년+ 와는 별개) */
+export function ageTier(years: number): 1 | 2 | 3 {
+  if (years >= 30) return 3;
+  if (years >= 20) return 2;
   return 1;
 }
 
