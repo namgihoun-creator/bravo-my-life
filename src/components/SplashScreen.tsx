@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
-/** 표시 1,000ms = 정지 700ms + 페이드아웃 300ms. 긴급 상황 사용자를 오래 막지 않는다. */
-const HOLD_MS = 700;
+/** 표시 2,000ms = 정지 1,700ms + 페이드아웃 300ms. 긴급 상황 사용자를 오래 막지 않는다. */
+const HOLD_MS = 1700;
 const FADE_MS = 300;
 
 /**

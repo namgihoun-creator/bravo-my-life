@@ -253,7 +253,7 @@ html[data-splash] .splash {
   background: #8a3b12;
 }
 html[data-splash] .splash-bar {
-  animation: splash-fill 900ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+  animation: splash-fill 1850ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
 }
 @keyframes splash-fill {
   to {
