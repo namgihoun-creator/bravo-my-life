@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Award, Heart, Navigation } from "lucide-react";
+import { Award } from "lucide-react";
 import CategoryIcon from "@/components/CategoryIcon";
 import { FILTERS, ageTier, foodLabel, yearsInBusiness, type Place } from "@/data/places";
-import { pushFavorite } from "@/lib/couple";
-import { toggleFavorite, useFavorites } from "@/lib/favorites";
 import { isLive } from "@/lib/livePlaces";
 import { openNavigation, useNavApp, type NavOrigin } from "@/lib/navigation";
 import { getOpenState } from "@/lib/openStatus";
@@ -18,14 +16,15 @@ const distText = (m: number) => {
   return d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
 };
 
-const iconBtn =
-  "theme-t flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-surface active:opacity-80";
+/** 모드 토큰(tag-bg·tag-text·border)이라 생존=블루, 노포=웜 브라운 톤으로 자연스럽게 바뀐다 */
+const navPill =
+  "theme-t flex h-11 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full border border-line bg-tag-bg px-3.5 text-caption font-semibold text-tag-text active:opacity-80";
 
 /**
  * 컴팩트 리스트 한 줄(약 76~84px). 한 화면에 6~8곳이 보이게 이름·핵심 뱃지·업종·거리·주소만 둔다.
  * - 노포: 행 전체가 `/place/[id]` 상세 링크(상세 페이지는 노포만 있다).
  * - 생존·실시간 폴백: 상세 페이지가 없으므로 행을 누르면 그 자리에서 전체 카드로 펼친다(`onExpand`).
- * - 우측 길찾기·찜(44×44)은 행 클릭과 겹치지 않는 형제 요소라 클릭이 서로 전파되지 않는다.
+ * - 우측 `길찾기` 알약(높이 44px)은 행 클릭과 겹치지 않는 형제 요소라 클릭이 전파되지 않는다. 찜은 카드형·상세 페이지에서 쓴다.
  */
 export default function CompactPlaceRow({
   place,
@@ -42,7 +41,6 @@ export default function CompactPlaceRow({
 }) {
   const live = isLive(place.id);
   const nopo = place.mode === "nopo";
-  const fav = !!useFavorites()[place.id];
   const [app] = useNavApp();
   const years = nopo ? yearsInBusiness(place) : null;
   const tier = years !== null && years >= 10 ? ageTier(years) : null;
@@ -100,7 +98,7 @@ export default function CompactPlaceRow({
   return (
     <div
       id={`place-${place.id}`}
-      className={`theme-t flex items-center gap-1 rounded-xl border border-line bg-surface pr-2 ${
+      className={`theme-t flex items-center gap-1 rounded-xl border border-line bg-surface pr-2.5 ${
         place.mode === "survival" ? "border-l-4 border-l-primary" : ""
       } ${highlighted ? "ring-2 ring-primary" : ""}`}
     >
@@ -117,24 +115,10 @@ export default function CompactPlaceRow({
         type="button"
         onClick={() => openNavigation(app, { name: place.name, lat: place.lat, lng: place.lng, category: place.category }, origin)}
         aria-label={`${place.name} 길찾기`}
-        className={`${iconBtn} text-ink`}
+        className={navPill}
       >
-        <Navigation size={18} aria-hidden />
+        길찾기
       </button>
-      {!live && (
-        <button
-          type="button"
-          onClick={() => {
-            const on = toggleFavorite(place);
-            void pushFavorite(place.id, on);
-          }}
-          aria-pressed={fav}
-          aria-label={fav ? `${place.name} 찜 해제` : `${place.name} 찜하기`}
-          className={`${iconBtn} ${fav ? "border-danger text-danger" : "text-ink"}`}
-        >
-          <Heart size={18} aria-hidden fill={fav ? "currentColor" : "none"} />
-        </button>
-      )}
     </div>
   );
 }
