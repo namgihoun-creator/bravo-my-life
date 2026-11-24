@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Award } from "lucide-react";
+import { Award, Navigation } from "lucide-react";
 import CategoryIcon from "@/components/CategoryIcon";
 import { FILTERS, ageTier, foodLabel, yearsInBusiness, type Place } from "@/data/places";
 import { isLive } from "@/lib/livePlaces";
@@ -16,15 +16,15 @@ const distText = (m: number) => {
   return d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
 };
 
-/** 모드 토큰(tag-bg·tag-text·border)이라 생존=블루, 노포=웜 브라운 톤으로 자연스럽게 바뀐다 */
+/** 고스트 2단(아이콘 + 라벨): 배경·테두리 상자 없이 좌측 세로 구분선만 둔다. primary 토큰이라 생존=블루, 노포=브라운 */
 const navPill =
-  "theme-t flex h-11 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full border border-line bg-tag-bg px-3.5 text-caption font-semibold text-tag-text active:opacity-80";
+  "theme-t flex min-h-[44px] w-12 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 self-stretch whitespace-nowrap rounded-r-xl border-l border-line bg-transparent text-primary active:bg-tag-bg";
 
 /**
  * 컴팩트 리스트 한 줄(약 76~84px). 한 화면에 6~8곳이 보이게 이름·핵심 뱃지·업종·거리·주소만 둔다.
  * - 노포: 행 전체가 `/place/[id]` 상세 링크(상세 페이지는 노포만 있다).
  * - 생존·실시간 폴백: 상세 페이지가 없으므로 행을 누르면 그 자리에서 전체 카드로 펼친다(`onExpand`).
- * - 우측 `길찾기` 알약(높이 44px)은 행 클릭과 겹치지 않는 형제 요소라 클릭이 전파되지 않는다. 찜은 카드형·상세 페이지에서 쓴다.
+ * - 우측 `길찾기` 고스트 2단 버튼(48×44↑, 구분선 좌측)은 행 클릭과 겹치지 않는 형제 요소라 클릭이 전파되지 않는다. 찜은 카드형·상세 페이지에서 쓴다.
  */
 export default function CompactPlaceRow({
   place,
@@ -98,7 +98,7 @@ export default function CompactPlaceRow({
   return (
     <div
       id={`place-${place.id}`}
-      className={`theme-t flex items-center gap-1 rounded-xl border border-line bg-surface pr-2.5 ${
+      className={`theme-t flex items-stretch rounded-xl border border-line bg-surface ${
         place.mode === "survival" ? "border-l-4 border-l-primary" : ""
       } ${highlighted ? "ring-2 ring-primary" : ""}`}
     >
@@ -117,7 +117,8 @@ export default function CompactPlaceRow({
         aria-label={`${place.name} 길찾기`}
         className={navPill}
       >
-        길찾기
+        <Navigation size={16} aria-hidden />
+        <span className="text-caption font-semibold leading-none">길찾기</span>
       </button>
     </div>
   );
