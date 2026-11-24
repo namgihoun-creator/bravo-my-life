@@ -95,10 +95,16 @@ function PlaceDetail({ place }: { place: Place }) {
         {place.reported_issue && (
           <p
             role="status"
-            className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-lg border border-warning bg-surface px-2 py-1 text-caption font-bold text-warning"
+            className={`mt-1.5 inline-flex max-w-full items-start gap-1 rounded-lg border border-warning px-2 py-1 text-label font-bold ${
+              place.reported_issue === "closed" ? "bg-warning text-white" : "bg-surface text-warning"
+            }`}
           >
-            <TriangleAlert size={12} strokeWidth={2} className="shrink-0" aria-hidden />
-            <span className="min-w-0 [overflow-wrap:anywhere]">폐업·변경 제보됨 — 방문 전 확인해 주세요</span>
+            <TriangleAlert size={14} strokeWidth={2.25} className="mt-0.5 shrink-0" aria-hidden />
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              {place.reported_issue === "closed"
+                ? "폐업 의심 · 방문 전 전화로 확인해 주세요"
+                : "정보 변경 제보됨 · 방문 전 확인해 주세요"}
+            </span>
           </p>
         )}
 

@@ -16,7 +16,7 @@ import { showToast } from "@/lib/toast";
  * 미지원 지역(가장 가까운 거점 30km 밖) 배너 아래의 '이 동네 데이터 요청하기' 버튼.
  * 서버가 좌표를 0.02° 격자 중심으로 줄여 저장하므로 정확한 위치는 남지 않는다. 성공·중복 모두 '요청 접수됨'으로 바꾼다.
  */
-export default function AreaRequestButton({ lat, lng }: { lat: number; lng: number }) {
+export default function AreaRequestButton({ lat, lng, compact = false }: { lat: number; lng: number; compact?: boolean }) {
   const cell = areaCell(lat, lng);
   const raw = useSyncExternalStore(subscribeRequested, getRequestedRaw, getRequestedRawServer);
   const done = isRequested(raw, cell.key);
@@ -52,11 +52,17 @@ export default function AreaRequestButton({ lat, lng }: { lat: number; lng: numb
       onClick={request}
       disabled={done || busy}
       aria-live="polite"
-      className={`theme-t flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-center text-label font-semibold disabled:cursor-default ${
+      className={`theme-t flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border py-2 ${
+        compact ? "min-w-[120px] flex-1 px-2.5" : "w-full px-3"
+      } text-center text-label font-semibold disabled:cursor-default ${
         done ? "border-line bg-surface text-muted" : "cursor-pointer border-line bg-surface text-ink active:opacity-80"
       }`}
     >
-      {done ? <Check size={16} className="shrink-0" aria-hidden /> : <MapPinPlus size={16} className="shrink-0" aria-hidden />}
+      {done ? (
+        <Check size={16} className={`shrink-0 ${compact ? "max-[359px]:hidden" : ""}`} aria-hidden />
+      ) : (
+        <MapPinPlus size={16} className={`shrink-0 ${compact ? "max-[359px]:hidden" : ""}`} aria-hidden />
+      )}
       <span className="min-w-0">{done ? "요청 접수됨 · 고마워요" : busy ? "보내는 중…" : "이 동네 데이터 요청하기"}</span>
     </button>
   );

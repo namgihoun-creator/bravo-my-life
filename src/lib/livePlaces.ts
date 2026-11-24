@@ -60,7 +60,7 @@ export function toLivePlace(d: LiveDoc, from: { lat: number; lng: number }): Pla
     address: d.address,
     place_url: `https://place.map.kakao.com/${d.id}`,
     badge: "실시간 검색",
-    tags: parking ? ["#실시간검색", "#공영여부미확인", "#요금미확인"] : ["#실시간검색", "#영업시간미확인"],
+    tags: parking ? ["#공영여부미확인", "#요금미확인"] : ["#영업시간미확인"],
     summary: parking
       ? "등록 전 지역이라 카카오 지도 검색 결과를 그대로 보여 드려요. 공영 여부와 요금은 직접 확인해 주세요."
       : "등록 전 지역이라 카카오 지도 검색 결과를 그대로 보여 드려요. 영업시간은 직접 확인해 주세요.",

@@ -55,11 +55,6 @@ export function naverSearchQuery(name: string, address?: string | null): string 
   return `${area} ${name}`.trim();
 }
 
-/** 네이버지도 앱 통합검색(`nmap://search`는 query·appname 만 받는다 — 좌표 파라미터 없음) */
-export function buildNaverSearchAppUrl(query: string, appName: string = DEFAULT_APP_NAME): string {
-  return `nmap://search?query=${encodeURIComponent(query)}&appname=${encodeURIComponent(appName)}`;
-}
-
 /** 네이버지도 웹 검색(앱이 없을 때의 폴백) */
 export function buildNaverSearchWebUrl(query: string): string {
   return `https://map.naver.com/p/search/${encodeURIComponent(query)}`;

@@ -639,10 +639,14 @@ function PlaceCard({
       {place.reported_issue && (
         <p
           role="status"
-          className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-lg border border-warning bg-surface px-2 py-1 text-caption font-bold text-warning"
+          className={`mt-1.5 inline-flex max-w-full items-start gap-1 rounded-lg border border-warning px-2 py-1 text-label font-bold ${
+            place.reported_issue === "closed" ? "bg-warning text-white" : "bg-surface text-warning"
+          }`}
         >
-          <TriangleAlert size={12} strokeWidth={2} className="shrink-0" aria-hidden />
-          <span className="min-w-0 [overflow-wrap:anywhere]">폐업·변경 제보됨</span>
+          <TriangleAlert size={14} strokeWidth={2.25} className="mt-0.5 shrink-0" aria-hidden />
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            {place.reported_issue === "closed" ? "폐업 의심 · 방문 전 전화로 확인하세요" : "정보 변경 제보됨 · 방문 전 확인하세요"}
+          </span>
         </p>
       )}
 
@@ -739,8 +743,8 @@ function PlaceCard({
           <span className="min-w-0">{open.isLlm ? `${open.reason} · 블로그 기준` : open.reason}</span>
         </p>
       ) : null}
-      {/* 화장실·세차장은 '이용 정보' 칩(개방·운영시간, 편의시설, 휴무)과 같은 말을 반복하는 요약 문장을 숨긴다 */}
-      {!(showMeta && meta.hours) && (
+      {/* 실시간 폴백(live:) 카드는 배지·라벨·상단 안내가 같은 말을 하므로 요약을 숨긴다. 화장실·세차장은 '이용 정보' 칩(개방·운영시간, 편의시설, 휴무)과 같은 말을 반복하는 요약 문장을 숨긴다 */}
+      {!(showMeta && meta.hours) && !liveCard && (
         <p className={`${statusRow ? "mt-1" : "mt-3"} line-clamp-2 text-body text-ink`}>{place.summary}</p>
       )}
 
@@ -1549,21 +1553,40 @@ export default function Home() {
         className="space-y-3 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4"
         aria-busy={loading}
       >
-        {hubBanner && (
-          <button
-            type="button"
-            onClick={() => pickLocation({ name: `${hubBanner.name} 인근`, lat: hubBanner.lat, lng: hubBanner.lng })}
-            className="theme-t flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-tag-bg px-3 py-2 text-center text-label font-semibold text-primary active:opacity-80"
-          >
-            <MapPin size={16} className="shrink-0" aria-hidden />
-            <span className="min-w-0 [overflow-wrap:anywhere]">
-              {unsupportedArea
-                ? `이 지역은 아직 지원하지 않아요 · 가장 가까운 ${hubBanner.name} 인근(${Math.round((hubBannerInfo?.m ?? 0) / 1000)}km)으로 보기`
-                : `근처에 등록된 장소가 적어요 · ${hubBanner.name} 인근으로 보기`}
-            </span>
-          </button>
+        {hubBanner && unsupportedArea && loc.kind !== "pending" ? (
+          // 미지원 지역: 안내 문구 + 가까운 거점 이동 + 데이터 요청을 한 카드로 묶어 첫 카드가 밀리지 않게 한다
+          <section className="theme-t space-y-2 rounded-xl border border-line bg-surface p-3" aria-label="미지원 지역 안내">
+            <p role="note" className="text-label font-semibold text-ink [overflow-wrap:anywhere]">
+              {liveShown ? LIVE_NOTICE : "이 지역은 아직 지원하지 않아요"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-label={`가장 가까운 ${hubBanner.name} 인근(${Math.round((hubBannerInfo?.m ?? 0) / 1000)}km)으로 보기`}
+                onClick={() => pickLocation({ name: `${hubBanner.name} 인근`, lat: hubBanner.lat, lng: hubBanner.lng })}
+                className="theme-t flex min-h-[44px] min-w-[120px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-tag-bg px-2.5 py-2 text-center text-label font-semibold text-primary active:opacity-80"
+              >
+                <MapPin size={16} className="shrink-0 max-[359px]:hidden" aria-hidden />
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  {hubBanner.name}({Math.round((hubBannerInfo?.m ?? 0) / 1000)}km) 보기
+                </span>
+              </button>
+              <AreaRequestButton lat={loc.lat} lng={loc.lng} compact />
+            </div>
+          </section>
+        ) : (
+          hubBanner && (
+            <button
+              type="button"
+              onClick={() => pickLocation({ name: `${hubBanner.name} 인근`, lat: hubBanner.lat, lng: hubBanner.lng })}
+              className="theme-t flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary bg-tag-bg px-3 py-2 text-center text-label font-semibold text-primary active:opacity-80"
+            >
+              <MapPin size={16} className="shrink-0" aria-hidden />
+              <span className="min-w-0 [overflow-wrap:anywhere]">근처에 등록된 장소가 적어요 · {hubBanner.name} 인근으로 보기</span>
+            </button>
+          )
         )}
-        {liveShown && (
+        {liveShown && !(hubBanner && unsupportedArea) && (
           <p
             role="note"
             className="theme-t rounded-xl border border-line bg-surface px-3 py-2 text-label font-semibold text-ink [overflow-wrap:anywhere]"
@@ -1571,7 +1594,6 @@ export default function Home() {
             {LIVE_NOTICE}
           </p>
         )}
-        {hubBanner && unsupportedArea && loc.kind !== "pending" && <AreaRequestButton lat={loc.lat} lng={loc.lng} />}
         {!hubBanner && radiusExpanded && !loading && !error && staleAt === null && (
           <p className="text-center text-caption text-muted" role="note">
             주변 2km 안에 장소가 적어 5km까지 넓혀 보여드려요

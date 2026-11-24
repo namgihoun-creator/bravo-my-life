@@ -56,7 +56,11 @@ export function inKorea(lat: number, lng: number): boolean {
 
 /** 카카오 로컬 API GET(서버 전용 키). 실패하면 던진다. */
 export async function kakaoJson(url: string, key: string) {
-  const res = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` }, cache: "no-store" });
+  const res = await fetch(url, {
+    headers: { Authorization: `KakaoAK ${key}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(5000), // 카카오가 응답하지 않아도 서버 함수가 매달리지 않게
+  });
   if (!res.ok) throw new Error(`kakao ${res.status}`);
   return res.json();
 }

@@ -49,3 +49,7 @@ __pycache__/
 
 # Git Bash 크래시 덤프
 *.stackdump
+
+# 로컬 전용(Windows 작업 스케줄러·보류 중인 메뉴 추출) — 커밋하지 않는다
+scripts/run_enrich_hours.bat
+scripts/enrich_llm_menus.py
