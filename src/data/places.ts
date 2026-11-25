@@ -62,18 +62,16 @@ export const FOOD_CHIPS: { key: string; label: string; group?: string; sub?: str
 export const FILTERS: Record<Mode, { key: string; label: string }[]> = {
   survival: [
     { key: "all", label: "전체" },
-    { key: "fav", label: "찜" },
-    { key: "laundry", label: "24시 코인세탁" },
-    { key: "print", label: "무인프린트" },
     { key: "pharmacy", label: "심야약국" },
-    { key: "battery", label: "보조배터리" },
-    { key: "parking", label: "공영주차장" },
-    { key: "carwash", label: "세차장" },
     { key: "toilet", label: "개방화장실" },
+    { key: "parking", label: "공영주차장" },
+    { key: "laundry", label: "코인세탁" },
+    { key: "print", label: "무인프린트" },
+    { key: "carwash", label: "세차장" },
+    { key: "battery", label: "보조배터리" },
   ],
   nopo: [
     { key: "all", label: "전체" },
-    { key: "fav", label: "찜" },
     { key: "y10", label: "10년+" },
     { key: "y15", label: "15년+" },
     { key: "y20", label: "20년+" },
@@ -258,13 +256,13 @@ export function nearestParking(
 /** '장소 제보' 폼의 모드별 카테고리 (서버 라우트의 화이트리스트와 동일해야 한다) */
 export const REPORT_CATEGORIES: Record<Mode, { key: string; label: string }[]> = {
   survival: [
+    { key: "pharmacy", label: "심야약국" },
+    { key: "toilet", label: "개방화장실" },
+    { key: "parking", label: "공영주차장" },
     { key: "laundry", label: "코인세탁" },
     { key: "print", label: "무인프린트" },
-    { key: "pharmacy", label: "심야약국" },
-    { key: "parking", label: "공영주차장" },
     { key: "carwash", label: "세차장" },
     { key: "battery", label: "보조배터리" },
-    { key: "toilet", label: "개방화장실" },
   ],
   nopo: [
     { key: "soup", label: "해장·국밥" },

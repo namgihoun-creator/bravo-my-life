@@ -403,7 +403,6 @@ function FilterChips({
   mode,
   value,
   counts,
-  favCount,
   visitedCount,
   onChange,
   showOpenChip,
@@ -420,14 +419,12 @@ function FilterChips({
   value: string;
   /** 현재 반경 내 필터별 장소 수. null(로딩/오류)이면 모든 칩을 보여준다. */
   counts: Record<string, number> | null;
-  /** 이 모드에서 찜한 장소 수 (1 이상이면 '찜 N') */
-  favCount: number;
   /** 이 모드에서 '다녀옴' 체크인한 장소 수 (1 이상일 때만 칩을 보인다) */
   visitedCount: number;
   onChange: (k: string) => void;
   /** 영업시간이 확인된 장소가 있을 때만 '지금 영업 중' 칩을 보여준다 */
   showOpenChip: boolean;
-  /** '지금 영업 중 / 지금 이용 가능(24시)' 토글 */
+  /** '지금 영업 중(노포) / 지금 열림(생존)' 토글 */
   openOnly: boolean;
   onToggleOpen: () => void;
 }) {
@@ -441,15 +438,15 @@ function FilterChips({
       ?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [mode, value, wrap]);
 
-  // '찜' 칩은 0건이어도 항상 보인다(발견 가능성). 나머지는 0건이면 숨긴다.
+  // 0건 칩은 숨긴다(찜은 헤더 토글로 옮겼다).
   // 생존 모드 핵심 카테고리(개방화장실·공영주차장)는 0건이어도 칩을 보여 주고, 눌렀을 때 안내 문구를 띄운다.
   const chips = FILTERS[mode].filter(
-    (f) => !counts || f.key === "all" || f.key === "fav" || isCoreChip(mode, f.key) || counts[f.key] > 0,
+    (f) => !counts || f.key === "all" || isCoreChip(mode, f.key) || counts[f.key] > 0,
   );
-  const openLabel = mode === "survival" ? "지금 이용 가능(24시)" : "지금 영업 중";
+  const openLabel = mode === "survival" ? "지금 열림" : "지금 영업 중";
 
   // 모든 칩이 같은 버튼 규격(아이콘 14px + gap-1.5 + 텍스트, 활성 시 currentColor 상속)을 쓴다
-  const chip = (key: string, active: boolean, onClick: () => void, label: string, fill = false) => (
+  const chip = (key: string, active: boolean, onClick: () => void, label: string) => (
     <button
       key={key}
       data-filter-chip
@@ -461,7 +458,7 @@ function FilterChips({
         active ? "border-primary bg-primary text-on-primary" : "border-line bg-surface text-ink"
       }`}
     >
-      <CategoryIcon k={key} fill={fill} />
+      <CategoryIcon k={key} />
       {label}
     </button>
   );
@@ -473,28 +470,18 @@ function FilterChips({
       f.key,
       f.key === value,
       () => onChange(f.key),
-      f.key === "fav"
-        ? favCount > 0
-          ? `찜 ${favCount}`
-          : "찜"
-        : liveLabels && f.key === "pharmacy"
-          ? "약국"
-          : liveLabels && f.key === "parking"
-            ? "주차장"
-            : f.label,
-      f.key === "fav" && favCount > 0,
+      liveLabels && f.key === "pharmacy" ? "약국" : liveLabels && f.key === "parking" ? "주차장" : f.label,
     ),
   );
-  // 순서: 전체 · 찜 · 지금 영업 중 · 카테고리/연차
-  // 순서: 전체 · 찜 · (다녀옴) · (지금 영업 중) · 카테고리/연차/업종
+  // 순서: 전체 · (다녀옴) · (지금 열림/영업 중) · 카테고리/연차/업종 (찜은 헤더 하트 토글)
   if (visitedCount > 0) {
     items.splice(
-      Math.min(2, items.length),
+      Math.min(1, items.length),
       0,
       chip("visited", value === "visited", () => onChange("visited"), `다녀옴 ${visitedCount}`),
     );
   }
-  if (showOpenChip) items.splice(Math.min(visitedCount > 0 ? 3 : 2, items.length), 0, openChip);
+  if (showOpenChip) items.splice(Math.min(visitedCount > 0 ? 2 : 1, items.length), 0, openChip);
 
   if (wrap) {
     return (
@@ -1433,7 +1420,6 @@ export default function Home() {
             ...Object.fromEntries(
               FILTERS[mode].map((f) => [f.key, pool.filter((p) => matchesFilter(p, f.key)).length]),
             ),
-            fav: favBase.length,
             visited: visitedBase.length,
           };
     // 찜 칩은 0건이어도 누르면 그대로 활성(빈 안내 표시) — '전체'가 같이 켜진 것처럼 보이지 않게 한다
@@ -1491,7 +1477,7 @@ export default function Home() {
       : openActive
         ? mode === "nopo"
           ? "지금 영업 중인 찐노포"
-          : "지금 이용 가능한 생존 시설"
+          : "지금 열려 있는 생존 시설"
         : activeFilter === "fav"
           ? `찜한 ${noun}`
           : activeFilter === "visited"
@@ -1549,7 +1535,6 @@ export default function Home() {
     mode,
     value: openActive ? "open-now" : activeFilter,
     counts,
-    favCount,
     visitedCount,
     onChange: changeFilter,
     showOpenChip: hasKnownHours,
@@ -1578,16 +1563,29 @@ export default function Home() {
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <LocationBadge loc={loc} onClick={() => setSheetOpen(true)} />
+            {/* 찜 토글: 켜면 찜한 장소만(목록·지도 공통), 다시 누르면 전체. 커플 코드 진입은 찜 화면 상단 링크로 옮겼다 */}
             <button
               type="button"
-              onClick={() => setCoupleOpen(true)}
-              aria-label={couple.code ? `커플 코드 연동 중, 코드 ${couple.code}` : "커플 코드 연동"}
-              aria-haspopup="dialog"
-              className="theme-t relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-surface text-primary"
+              onClick={() => changeFilter("fav")}
+              aria-pressed={activeFilter === "fav" && !openActive}
+              aria-label={`찜한 장소 ${favCount}곳 보기`}
+              className={`theme-t relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border text-primary ${
+                activeFilter === "fav" && !openActive ? "border-primary bg-tag-bg" : "border-line bg-surface"
+              }`}
             >
-              <HeartHandshake size={18} strokeWidth={2} aria-hidden />
-              {couple.code && (
-                <span aria-hidden className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success" />
+              <Heart
+                size={18}
+                strokeWidth={2}
+                aria-hidden
+                className={activeFilter === "fav" && !openActive ? "fill-current" : ""}
+              />
+              {favCount > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-bg bg-primary px-1 text-[10px] font-bold leading-none text-on-primary"
+                >
+                  {favCount > 99 ? "99+" : favCount}
+                </span>
               )}
             </button>
             <button
@@ -1768,6 +1766,19 @@ export default function Home() {
             주변 2km 안에 장소가 적어 5km까지 넓혀 보여드려요
           </p>
         )}
+        {activeFilter === "fav" && !openActive && (
+          <button
+            type="button"
+            onClick={() => setCoupleOpen(true)}
+            aria-haspopup="dialog"
+            aria-label={couple.code ? `커플 코드로 같이 보기, 연동 중, 코드 ${couple.code}` : "커플 코드로 같이 보기"}
+            className="theme-t flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-label font-semibold text-primary active:opacity-80"
+          >
+            <HeartHandshake size={16} strokeWidth={2} aria-hidden className="shrink-0" />
+            커플 코드로 같이 보기
+            {couple.code && <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full bg-success" />}
+          </button>
+        )}
         {view === "list" && !loading && !error && rawPlaces.length > 0 && (
           <div className="flex items-center justify-between gap-2">
             {/* 문구 앞부분만 말줄임(긴 동네·검색어 대비), 숫자는 항상 보이고 정렬 기준은 360px 미만에서 숨겨 토글과 겹치거나 꺾이지 않게 한다 */}
@@ -1876,7 +1887,9 @@ export default function Home() {
                 : !openActive && EMPTY_MESSAGE[activeFilter]
                 ? EMPTY_MESSAGE[activeFilter]
                 : openActive
-                ? `지금 ${mode === "survival" ? "이용 가능(24시)" : "영업 중"}으로 확인된 장소가 없어요.`
+                ? mode === "survival"
+                  ? "지금 열려 있는 곳으로 확인된 장소가 없어요."
+                  : "지금 영업 중으로 확인된 장소가 없어요."
                 : `반경 ${!anchor && nearby.expanded[mode] ? 5 : 2}km 안에 조건에 맞는 장소가 아직 없어요.`}
             </p>
             {openActive && (
